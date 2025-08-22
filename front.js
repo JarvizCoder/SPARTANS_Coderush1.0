@@ -1012,7 +1012,24 @@ async function findNearbyFacilities() {
 
     navigator.geolocation.getCurrentPosition(async (pos) => {
         const { latitude: lat, longitude: lon } = pos.coords;
-        if (statusEl) statusEl.textContent = t.nearbyFetching || 'Finding facilities near you...';
+        // Store for directions links
+        window.__userLocation = { lat, lon };
+
+        // Reverse geocode user's location for exact address (best-effort)
+        try {
+            const rev = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}`);
+            const revData = await rev.json();
+            const addr = revData && revData.display_name ? revData.display_name : '';
+            if (statusEl) {
+                const coords = `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+                statusEl.textContent = `${t.yourLocation || 'Your location'}: ${addr ? addr + ' ' : ''}(${coords})\n${t.nearbyFetching || 'Finding facilities near you...'}`;
+            }
+        } catch (e) {
+            if (statusEl) {
+                const coords = `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+                statusEl.textContent = `${t.yourLocation || 'Your location'}: (${coords})\n${t.nearbyFetching || 'Finding facilities near you...'}`;
+            }
+        }
 
         try {
             // Overpass query: hospitals, clinics, doctors, healthcare facilities within 5km
@@ -1038,12 +1055,14 @@ async function findNearbyFacilities() {
 
             const items = elements.map(el => {
                 const center = el.center || { lat: el.lat, lon: el.lon };
-                const name = (el.tags && (el.tags.name || el.tags["name:en"])) || 'Unnamed facility';
-                const type = (el.tags && (el.tags.amenity || el.tags.healthcare)) || 'facility';
+                const tags = el.tags || {};
+                const name = (tags.name || tags["name:en"]) || 'Unnamed facility';
+                const type = (tags.amenity || tags.healthcare) || 'facility';
                 const dist = center && typeof center.lat === 'number' && typeof center.lon === 'number'
                     ? haversineDistanceKm(lat, lon, center.lat, center.lon)
                     : null;
-                return { name, type, dist };
+                const address = formatAddress(tags);
+                return { name, type, dist, lat: center.lat, lon: center.lon, address };
             })
             .filter(it => it.dist !== null)
             .sort((a, b) => a.dist - b.dist)
@@ -1065,6 +1084,21 @@ async function findNearbyFacilities() {
     }, { enableHighAccuracy: true, timeout: 10000 });
 }
 
+function formatAddress(tags) {
+    if (!tags) return '';
+    const parts = [];
+    if (tags['addr:housename']) parts.push(tags['addr:housename']);
+    if (tags['addr:housenumber']) parts.push(tags['addr:housenumber']);
+    if (tags['addr:street']) parts.push(tags['addr:street']);
+    if (tags['addr:neighbourhood']) parts.push(tags['addr:neighbourhood']);
+    if (tags['addr:suburb']) parts.push(tags['addr:suburb']);
+    if (tags['addr:city']) parts.push(tags['addr:city']);
+    if (tags['addr:district']) parts.push(tags['addr:district']);
+    if (tags['addr:state']) parts.push(tags['addr:state']);
+    if (tags['addr:postcode']) parts.push(tags['addr:postcode']);
+    return parts.join(', ');
+}
+
 function haversineDistanceKm(lat1, lon1, lat2, lon2) {
     const toRad = d => d * Math.PI / 180;
     const R = 6371; // km
@@ -1079,16 +1113,40 @@ function renderNearbyList(items) {
     const listEl = document.getElementById('nearbyResults');
     if (!listEl) return;
     listEl.innerHTML = '';
+    const origin = window.__userLocation || null;
     items.forEach(it => {
         const li = document.createElement('li');
         li.className = 'nearby-item';
-        li.style.padding = '10px 12px';
-        li.style.border = '1px solid #e6eef7';
-        li.style.borderRadius = '10px';
-        li.style.marginBottom = '10px';
-        li.innerHTML = `<strong>${it.name}</strong><br><span style="color:#496;">${it.type}</span> · <span>${it.dist} km</span>`;
+        const coords = (typeof it.lat === 'number' && typeof it.lon === 'number') ? `${it.lat.toFixed(5)}, ${it.lon.toFixed(5)}` : '';
+        const mapsLink = (typeof it.lat === 'number' && typeof it.lon === 'number')
+            ? `https://www.google.com/maps?q=${it.lat},${it.lon}`
+            : '#';
+        const dirLink = origin && typeof it.lat === 'number' && typeof it.lon === 'number'
+            ? `https://www.google.com/maps/dir/?api=1&origin=${origin.lat},${origin.lon}&destination=${it.lat},${it.lon}`
+            : mapsLink;
+        const addrLine = it.address ? `<div style="color:#64748b;margin-top:2px;">${it.address}</div>` : '';
+        const coordLine = coords ? `<div style="color:#64748b; font-size: 0.9rem;">(${coords})</div>` : '';
+        const actions = `<div class="nearby-actions" style="margin-top:6px; display:flex; gap:8px; flex-wrap:wrap;">
+            <a class="nearby-link" href="#" onclick="openInlineMap(${it.lat},${it.lon}, '${(it.name||'').replace(/'/g, "\'")}'); return false;">Open Map</a>
+            <a class="nearby-link" href="${dirLink}" target="_blank" rel="noopener">Directions</a>
+        </div>`;
+        li.innerHTML = `<strong>${it.name}</strong><br><span style="color:#496;">${it.type}</span> · <span>${it.dist} km</span>${addrLine}${coordLine}${actions}`;
         listEl.appendChild(li);
     });
+}
+
+function openInlineMap(lat, lon, name) {
+    const frame = document.getElementById('nearbyMapFrame');
+    if (!frame || typeof lat !== 'number' || typeof lon !== 'number') return;
+    const safeName = encodeURIComponent(name || 'Location');
+    // Use Google Maps embed
+    const url = `https://www.google.com/maps?q=${lat},${lon}(${safeName})&z=15&output=embed`;
+    frame.src = url;
+    // On small screens, scroll map into view
+    try {
+        const mapWrap = frame.closest('.nearby-map') || frame;
+        mapWrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    } catch (e) {}
 }
 
 // Utility function to show messages
