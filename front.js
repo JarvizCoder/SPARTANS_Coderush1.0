@@ -593,7 +593,12 @@ function applyTranslations(lang) {
     setText('quick-stomach', t.quickStomach);
     setText('quick-headache', t.quickHeadache);
     setText('quick-medicine', t.quickMedicine);
+    setText('quick-cough', t.quickCough);
+    setText('quick-gi', t.quickGI);
+    setText('quick-chest', t.quickChest);
+    setText('quick-back', t.quickBack);
     setText('quick-skin', t.quickSkin);
+    setText('quick-periods', t.quickPeriods);
     setText('chatWithDoctorTitle', t.chatWithDoctorTitle);
     setText('speakText', t.speakText);
     setText('typeText', t.typeText);
@@ -711,13 +716,298 @@ function sendMessage() {
     if (message === '') return;
 
     addMessage(message, 'user');
+    // Save to persistent history (returns id; currently we update last unanswered entry later)
+    try { addToHistory(message); } catch (e) {}
     userInput.value = '';
 
     // Generate a contextual response
     setTimeout(() => {
         const response = handleConversationFlow(message);
         addMessage(response, 'bot');
+        // attach answer preview to last history entry
+        try { updateLastHistoryAnswer(response); } catch (e) {}
     }, 500);
+}
+
+// --- Text to Speech ---
+let ttsEnabled = true; // simple global toggle if needed later
+let ttsRetryCount = 0; // guard retries until voices load
+let __ttsUnlockHandler = null;
+
+function setupTTSUnlock() {
+    if (__ttsUnlockHandler) return;
+    const h = () => {
+        try {
+            const s = window.speechSynthesis;
+            if (s) {
+                try { s.resume(); } catch (e) {}
+                try { s.getVoices(); } catch (e) {}
+            }
+        } catch (e) {}
+        document.removeEventListener('click', h);
+        document.removeEventListener('keydown', h);
+        document.removeEventListener('touchstart', h);
+        __ttsUnlockHandler = null;
+    };
+    __ttsUnlockHandler = h;
+    document.addEventListener('click', h, { once: true, capture: true });
+    document.addEventListener('keydown', h, { once: true, capture: true });
+    document.addEventListener('touchstart', h, { once: true, capture: true });
+}
+
+function mapLangToVoiceTag(langCode) {
+    // Map our UI language codes to BCP-47 voice tags
+    const lc = String(langCode || '').toLowerCase();
+    const map = {
+        'en': 'en-US',
+        'hi': 'hi-IN',
+        'mr': 'mr-IN',
+        'ta': 'ta-IN',
+        'te': 'te-IN',
+        'bn': 'bn-IN',
+        'gu': 'gu-IN',
+        'kn': 'kn-IN',
+        'ml': 'ml-IN',
+        'pa': 'pa-IN',
+        'or': 'or-IN',
+        'ur': 'ur-IN'
+    };
+    return map[lc] || 'en-US';
+}
+
+function pickVoiceFor(langTag) {
+    try {
+        const synth = window.speechSynthesis;
+        if (!synth) return null;
+        const voices = synth.getVoices ? synth.getVoices() : [];
+        if (!voices || !voices.length) return null;
+        const lcTag = langTag.toLowerCase();
+        const base = lcTag.split('-')[0];
+        // Candidates: exact or same language base
+        const candidates = voices.filter(v => {
+            const l = (v.lang || '').toLowerCase();
+            return l === lcTag || l.startsWith(base);
+        });
+        if (!candidates.length) return null;
+        // Prefer higher quality voices (heuristic)
+        const scored = candidates
+            .map(v => {
+                const name = (v.name || '').toLowerCase();
+                let score = 0;
+                if (v.lang && v.lang.toLowerCase() === lcTag) score += 3;
+                if (/neural|natural|cloud|online/.test(name)) score += 3;
+                if (/google|microsoft|apple/.test(name)) score += 2;
+                if (/female|woman|girl/.test(name)) score += 1; // often more natural for assistants
+                return { v, score };
+            })
+            .sort((a, b) => b.score - a.score);
+        return (scored[0] && scored[0].v) || candidates[0] || null;
+    } catch (e) { return null; }
+}
+
+function stripTags(s) {
+    return String(s || '')
+        .replace(/<br\s*\/?>(?=\s|$)/gi, '\n')
+        .replace(/<[^>]*>/g, '')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&amp;/g, '&');
+}
+
+function chunksForTTS(text, maxLen = 180) {
+    const t = stripTags(text).replace(/\s+/g, ' ').trim();
+    if (t.length <= maxLen) return [t];
+    const parts = [];
+    let start = 0;
+    while (start < t.length) {
+        let end = Math.min(start + maxLen, t.length);
+        // try to cut at sentence boundary
+        const slice = t.slice(start, end);
+        let cut = Math.max(slice.lastIndexOf('।'), slice.lastIndexOf('.'));
+        if (cut < 40) { // too early, try question/exclamation
+            cut = Math.max(cut, slice.lastIndexOf('?'));
+            cut = Math.max(cut, slice.lastIndexOf('!'));
+        }
+        if (cut < 40) { // still too early, cut at last space
+            cut = slice.lastIndexOf(' ');
+        }
+        if (cut <= 0) cut = slice.length;
+        parts.push(slice.slice(0, cut).trim());
+        start += cut;
+    }
+    return parts.filter(Boolean);
+}
+
+function speak(text) {
+    try {
+        const synth = window.speechSynthesis;
+        if (!synth || !text || !ttsEnabled) return;
+        // Cancel to avoid overlap and keep it snappy
+        try { if (synth.speaking || synth.pending) synth.cancel(); } catch (e) {}
+        // Some browsers require resume after user gesture
+        try { synth.resume(); } catch (e) {}
+        // If voices aren't loaded yet, retry shortly (once or twice)
+        const existingVoices = synth.getVoices ? synth.getVoices() : [];
+        if ((!existingVoices || !existingVoices.length) && ttsRetryCount < 2) {
+            ttsRetryCount++;
+            setTimeout(() => speak(text), 250);
+            return;
+        }
+        ttsRetryCount = 0;
+        const tag = mapLangToVoiceTag(typeof currentLanguage !== 'undefined' ? currentLanguage : 'en');
+        const voice = pickVoiceFor(tag);
+
+        // Language-specific prosody tweaks for naturalness
+        const baseRate = (tag.startsWith('hi') ? 0.95 : 0.98); // be a touch slower overall
+        const rate = Math.min(1.05, Math.max(0.9, baseRate));
+        const pitch = 1.0; // neutral pitch to feel natural
+
+        const pieces = chunksForTTS(text);
+        pieces.forEach((piece, i) => {
+            const utter = new SpeechSynthesisUtterance(piece);
+            utter.lang = tag;
+            utter.rate = rate;
+            utter.pitch = pitch;
+            if (voice) utter.voice = voice;
+            // small pause between chunks for breath
+            if (i > 0) utter.pause = 80; // not widely supported but harmless
+            synth.speak(utter);
+        });
+    } catch (e) { /* no-op */ }
+}
+
+// --- Voice input (Speech-to-Text) ---
+let __recog = null;
+let __recognizing = false;
+
+function getRecognizer() {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return null;
+    const r = new SR();
+    r.lang = mapLangToVoiceTag(typeof currentLanguage !== 'undefined' ? currentLanguage : 'en');
+    r.interimResults = false;
+    r.maxAlternatives = 1;
+    return r;
+}
+
+function setVoiceButtonsActive(isVoice) {
+    const vb = document.querySelector('.voice-btn');
+    const tb = document.querySelector('.text-btn');
+    if (vb) vb.classList.toggle('active', !!isVoice);
+    if (tb) tb.classList.toggle('active', !isVoice);
+}
+
+function startVoiceChat() {
+    try { setupTTSUnlock(); } catch (e) {}
+    const t = translations[currentLanguage] || translations.hi || {};
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) {
+        showMessage(t.voiceUnsupported || 'Voice feature is not available in your browser.', 'bot');
+        return;
+    }
+    if (__recognizing && __recog) {
+        try { __recog.stop(); } catch (e) {}
+        return;
+    }
+    if (!__recog) {
+        __recog = getRecognizer();
+        if (!__recog) { showMessage(t.voiceUnsupported || 'Voice feature is not available in your browser.', 'bot'); return; }
+        __recog.onstart = () => {
+            __recognizing = true;
+            setVoiceButtonsActive(true);
+            const msg = t.voiceStart || 'Start speaking...';
+            const el = document.getElementById('speakText');
+            if (el) el.textContent = msg;
+        };
+        __recog.onerror = () => {
+            __recognizing = false;
+            setVoiceButtonsActive(false);
+            const el = document.getElementById('speakText');
+            if (el) el.textContent = t.speakText || 'Speak';
+            showMessage(t.voiceErr || 'Problem recognizing voice. Please type your message.', 'bot');
+        };
+        __recog.onend = () => {
+            __recognizing = false;
+            setVoiceButtonsActive(false);
+            const el = document.getElementById('speakText');
+            if (el) el.textContent = t.speakText || 'Speak';
+        };
+        __recog.onresult = (ev) => {
+            try {
+                const res = ev.results && ev.results[0] && ev.results[0][0];
+                const text = res ? res.transcript : '';
+                if (text) {
+                    const input = document.getElementById('userInput');
+                    if (input) input.value = text;
+                    addMessage(text, 'user');
+                    sendMessage();
+                }
+            } catch (e) {}
+        };
+    }
+    try { __recog.start(); } catch (e) {}
+}
+
+function stopVoiceChat() {
+    if (__recog && __recognizing) {
+        try { __recog.stop(); } catch (e) {}
+    }
+}
+
+function switchToText() {
+    stopVoiceChat();
+    setVoiceButtonsActive(false);
+}
+
+// Preload voices for reliability and set up a one-time retry
+function initTTS() {
+    try {
+        const synth = window.speechSynthesis;
+        if (!synth) return;
+        // Access voices once to trigger population on some browsers
+        synth.getVoices();
+        let tried = false;
+        const handler = () => {
+            if (tried) return;
+            tried = true;
+            // Cache touch: pick once so subsequent speak() has a ready voice list
+            pickVoiceFor(mapLangToVoiceTag(typeof currentLanguage !== 'undefined' ? currentLanguage : 'en'));
+            synth.removeEventListener('voiceschanged', handler);
+        };
+        synth.addEventListener('voiceschanged', handler);
+        // Also try a delayed second getVoices in case event doesn't fire
+        setTimeout(() => synth.getVoices(), 400);
+    } catch (e) {}
+}
+
+// Keep only the selected language in mixed (bilingual) texts
+function formatForDisplay(text, lang) {
+    try {
+        const t = String(text || '');
+        const lc = String(lang || currentLanguage || 'en').toLowerCase();
+        const isEn = lc === 'en';
+        const hasDeva = (s) => /[\u0900-\u097F]/.test(s);
+        // First, resolve inline split pattern: "... HI ... / ... EN ..."
+        const mapped = t
+            .split('\n')
+            .map(line => {
+                const parts = line.split(' / ');
+                if (parts.length === 2) {
+                    return isEn ? parts[1].trim() : parts[0].trim();
+                }
+                return line;
+            })
+            .join('\n');
+
+        // Then, filter lines based on script for general bilingual blocks
+        const outLines = mapped.split('\n').filter(line => {
+            const deva = hasDeva(line);
+            if (isEn) return !deva;     // keep non-Devanagari lines for English
+            return deva || /[•\-\d]/.test(line) || line.trim().length < 3; // keep Hindi or neutral bullets/numbers
+        });
+        const out = outLines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+        return out || mapped; // fallback if filtering removed everything
+    } catch (e) { return String(text || ''); }
 }
 
 function addMessage(text, sender) {
@@ -726,23 +1016,30 @@ function addMessage(text, sender) {
     messageDiv.className = `chat-bubble ${sender}`;
     
     if (sender === 'bot') {
+        // Ensure only selected language is shown
+        text = formatForDisplay(text, currentLanguage);
         messageDiv.innerHTML = `
             <div class="bot-avatar">👩‍⚕️</div>
             <div class="message-content">
-                <div class="message-text">${text.replace(/\n/g, '<br>')}</div>
+                <div class="message-text">${text.replace(/\n/g, '&lt;br&gt;')}</div>
             </div>
         `;
     } else {
         messageDiv.innerHTML = `
             <div class="bot-avatar user-avatar">👤</div>
             <div class="message-content">
-                <div class="message-text">${text.replace(/\n/g, '<br>')}</div>
+                <div class="message-text">${text.replace(/\n/g, '&lt;br&gt;')}</div>
             </div>
         `;
     }
     
     chatWindow.appendChild(messageDiv);
     chatWindow.scrollTop = chatWindow.scrollHeight;
+
+    // Speak bot messages immediately for quick experience
+    if (sender === 'bot') {
+        speak(text);
+    }
 }
 
 // --- NLP helpers ---
@@ -1172,9 +1469,193 @@ function showMessage(text, sender) {
     addMessage(text, sender);
 }
 
+// --- Sidebar controls & Important Contacts (localStorage) ---
+function openSidebar() {
+    const sb = document.getElementById('sidebar');
+    const ov = document.getElementById('sidebarOverlay');
+    if (sb) sb.classList.add('open');
+    if (ov) ov.classList.add('show');
+}
+
+function closeSidebar() {
+    const sb = document.getElementById('sidebar');
+    const ov = document.getElementById('sidebarOverlay');
+    if (sb) sb.classList.remove('open');
+    if (ov) ov.classList.remove('show');
+}
+
+function getContacts() {
+    try {
+        const raw = localStorage.getItem('vd_contacts');
+        return raw ? JSON.parse(raw) : [];
+    } catch (e) { return []; }
+}
+
+function saveContacts(list) {
+    try { localStorage.setItem('vd_contacts', JSON.stringify(list)); } catch (e) {}
+}
+
+function renderContacts() {
+    const ul = document.getElementById('contactsList');
+    if (!ul) return;
+    const list = getContacts();
+    ul.innerHTML = '';
+    if (!list.length) {
+        const li = document.createElement('li');
+        li.textContent = 'No contacts added yet.';
+        ul.appendChild(li);
+        return;
+    }
+    list.forEach((c, idx) => {
+        const li = document.createElement('li');
+        li.innerHTML = `<strong>${c.name}</strong> — <a href="tel:${c.phone}">${c.phone}</a> ` +
+            `<button class="contact-del" data-index="${idx}">Delete</button>`;
+        ul.appendChild(li);
+    });
+}
+
+function addContact() {
+    const name = prompt('Contact name:');
+    if (!name) return;
+    const phone = prompt('Phone number:');
+    if (!phone) return;
+    const list = getContacts();
+    list.push({ name: name.trim(), phone: phone.trim() });
+    saveContacts(list);
+    renderContacts();
+}
+
+function clearContacts() {
+    if (!confirm('Clear all saved contacts?')) return;
+    saveContacts([]);
+    renderContacts();
+}
+
+// --- Chat History (localStorage) ---
+function getHistory() {
+    try {
+        const raw = localStorage.getItem('vd_history');
+        return raw ? JSON.parse(raw) : [];
+    } catch (e) { return []; }
+}
+
+function saveHistory(list) {
+    try { localStorage.setItem('vd_history', JSON.stringify(list)); } catch (e) {}
+}
+
+function addToHistory(q) {
+    const trimmed = (q || '').trim();
+    if (!trimmed) return null;
+    const list = getHistory();
+    const id = Date.now() + Math.random();
+    const item = { id, q: trimmed, a: null, ts: Date.now() };
+    list.push(item);
+    // keep last 200 only
+    const limited = list.slice(-200);
+    saveHistory(limited);
+    renderHistory();
+    return id;
+}
+
+function updateLastHistoryAnswer(answer) {
+    try {
+        const list = getHistory();
+        for (let i = list.length - 1; i >= 0; i--) {
+            if (list[i].a == null) {
+                list[i].a = String(answer || '');
+                break;
+            }
+        }
+        saveHistory(list);
+        renderHistory();
+    } catch (e) {}
+}
+
+function renderHistory() {
+    const ul = document.getElementById('historyList');
+    if (!ul) return;
+    const searchEl = document.getElementById('historySearch');
+    const query = searchEl ? (searchEl.value || '').toLowerCase() : '';
+    const list = getHistory().filter(it => {
+        if (!query) return true;
+        const q = (it.q || '').toLowerCase();
+        const a = (it.a || '').toLowerCase();
+        return q.includes(query) || a.includes(query);
+    });
+    ul.innerHTML = '';
+    if (!list.length) {
+        const li = document.createElement('li');
+        li.textContent = 'No history yet.';
+        ul.appendChild(li);
+        const cnt = document.getElementById('historyCount');
+        if (cnt) cnt.textContent = '';
+        return;
+    }
+    // Show most recent first
+    const reversed = [...list].reverse();
+    reversed.forEach((it) => {
+        const date = new Date(it.ts);
+        const when = !isNaN(date) ? date.toLocaleString() : '';
+        const li = document.createElement('li');
+        const safeQ = (it.q || '').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        const encQ = encodeURIComponent(it.q || '');
+        const previewA = (it.a || '').replace(/\n/g,' ').slice(0, 120);
+        const safeA = previewA.replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        li.innerHTML = `
+            <div class="history-row">
+              <button class="history-item" data-q="${encQ}" title="Reuse this question">❓ ${safeQ}</button>
+              <button class="history-del" data-id="${it.id}" title="Delete">✕</button>
+            </div>
+            <div class="history-meta">${when}${safeA ? ' — ' + safeA : ''}</div>
+        `;
+        ul.appendChild(li);
+    });
+    const cnt = document.getElementById('historyCount');
+    if (cnt) cnt.textContent = `${reversed.length}`;
+}
+
+function deleteHistoryItem(id) {
+    try {
+        const list = getHistory();
+        const next = list.filter(it => String(it.id) !== String(id));
+        saveHistory(next);
+        renderHistory();
+    } catch (e) {}
+}
+
+function clearHistory() {
+    if (!confirm('Clear entire chat history?')) return;
+    saveHistory([]);
+    renderHistory();
+}
+
+// Clear chat transcript (from start)
+function clearChat() {
+    if (!confirm('Clear all chat messages?')) return;
+    try {
+        // Stop any ongoing TTS for a clean reset
+        if (window.speechSynthesis && (speechSynthesis.speaking || speechSynthesis.pending)) {
+            speechSynthesis.cancel();
+        }
+    } catch (e) {}
+    // Reset conversation state
+    try { resetConversation(); } catch (e) {}
+    // Clear UI
+    const cw = document.getElementById('chat-window');
+    if (cw) cw.innerHTML = '';
+    // Show localized greeting again
+    const t = translations[currentLanguage] || translations.hi || {};
+    const greet = t.greet || 'Hello! How can I help?';
+    addMessage(greet, 'bot');
+}
+
 // Initialize the page
 document.addEventListener('DOMContentLoaded', function() {
     // Apply UI language once DOM is ready
+    // Preload TTS voices for more natural, immediate playback
+    try { initTTS(); } catch (e) {}
+    // Prepare TTS unlock on first user gesture (needed on many browsers)
+    try { setupTTSUnlock(); } catch (e) {}
     applyTranslations(currentLanguage);
     setTimeout(() => {
         showMessage(translations[currentLanguage].greet, 'bot');
@@ -1193,6 +1674,63 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     });
+
+    // Sidebar wiring
+    const toggle = document.getElementById('sidebarToggle');
+    if (toggle) toggle.addEventListener('click', openSidebar);
+    const overlay = document.getElementById('sidebarOverlay');
+    if (overlay) overlay.addEventListener('click', closeSidebar);
+    // Close on ESC
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSidebar(); });
+    // Contacts: render and handle delete clicks (event delegation)
+    renderContacts();
+    const contactsList = document.getElementById('contactsList');
+    if (contactsList) {
+        contactsList.addEventListener('click', (e) => {
+            const btn = e.target.closest('.contact-del');
+            if (!btn) return;
+            const idx = parseInt(btn.getAttribute('data-index'));
+            const list = getContacts();
+            if (!isNaN(idx)) {
+                list.splice(idx, 1);
+                saveContacts(list);
+                renderContacts();
+            }
+        });
+    }
+
+    // History: render and allow click-to-reuse
+    renderHistory();
+    const historyList = document.getElementById('historyList');
+    if (historyList) {
+        historyList.addEventListener('click', (e) => {
+            // reuse question
+            const reuse = e.target.closest('.history-item');
+            if (reuse) {
+                let q = reuse.getAttribute('data-q') || '';
+                try { q = decodeURIComponent(q); } catch (e) {}
+                const input = document.getElementById('userInput');
+                if (input) {
+                    input.value = q;
+                    sendMessage();
+                }
+                return;
+            }
+            // delete one item
+            const del = e.target.closest('.history-del');
+            if (del) {
+                const id = del.getAttribute('data-id');
+                if (id) deleteHistoryItem(id);
+                return;
+            }
+        });
+    }
+
+    // Search history as you type
+    const hs = document.getElementById('historySearch');
+    if (hs) {
+        hs.addEventListener('input', () => renderHistory());
+    }
 });
 
 // Add some interactive animations
