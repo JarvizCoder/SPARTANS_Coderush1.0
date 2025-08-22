@@ -17,6 +17,7 @@ const translations = {
         quickGI: 'उल्टी/दस्त',
         quickChest: 'छाती दर्द',
         quickBack: 'पीठ दर्द',
+        quickSkin: 'त्वचा संक्रमण',
         quickPeriods: 'पीरियड समस्या',
         chatWithDoctorTitle: 'डॉक्टर से बात करें',
         speakText: 'बोलें',
@@ -83,6 +84,7 @@ const translations = {
         quickGI: 'Vomiting/Diarrhea',
         quickChest: 'Chest Pain',
         quickBack: 'Back Pain',
+        quickSkin: 'Skin Infection',
         quickPeriods: 'Period Issues',
         chatWithDoctorTitle: 'Chat with Doctor',
         speakText: 'Speak',
@@ -145,6 +147,7 @@ const translations = {
         quickStomach: 'पोटदुखी',
         quickHeadache: 'डोकेदुखी',
         quickMedicine: 'औषध',
+        quickSkin: 'त्वचा संसर्ग',
         chatWithDoctorTitle: 'डॉक्टरांशी बोला',
         speakText: 'बोला',
         typeText: 'टाइप करा',
@@ -205,6 +208,7 @@ const translations = {
         quickStomach: 'પેટમાં દુખાવો',
         quickHeadache: 'માથાનો દુખાવો',
         quickMedicine: 'દવા',
+        quickSkin: 'ત્વચાનો ચેપ',
         chatWithDoctorTitle: 'ડોક્ટર સાથે વાત કરો',
         speakText: 'બોલો',
         typeText: 'ટાઈપ કરો',
@@ -265,6 +269,7 @@ const translations = {
         quickStomach: 'পেটব্যথা',
         quickHeadache: 'মাথাব্যথা',
         quickMedicine: 'ওষুধ',
+        quickSkin: 'ত্বকের সংক্রমণ',
         chatWithDoctorTitle: 'ডাক্তারকে বলুন',
         speakText: 'বলুন',
         typeText: 'টাইপ করুন',
@@ -325,6 +330,7 @@ const translations = {
         quickStomach: 'வயிற்று வலி',
         quickHeadache: 'தலைவலி',
         quickMedicine: 'மருந்து',
+        quickSkin: 'தோல் தொற்று',
         chatWithDoctorTitle: 'மருத்துவருடன் பேசுங்கள்',
         speakText: 'பேசவும்',
         typeText: 'தட்டச்சு செய்யவும்',
@@ -383,6 +389,7 @@ const translations = {
         quickStomach: 'కడుపునొప్పి',
         quickHeadache: 'తలనొప్పి',
         quickMedicine: 'ఔషధం',
+        quickSkin: 'చర్మ ఇన్ఫెక్షన్',
         chatWithDoctorTitle: 'డాక్టరుతో మాట్లాడండి',
         speakText: 'మాట్లాడండి',
         typeText: 'టైప్ చేయండి',
@@ -441,6 +448,7 @@ const translations = {
         quickStomach: 'ಹೊಟ್ಟೆ ನೋವು',
         quickHeadache: 'ತಲೆನೋವು',
         quickMedicine: 'ಔಷಧಿ',
+        quickSkin: 'ಚರ್ಮದ ಸೋಂಕು',
         chatWithDoctorTitle: 'ವೈದ್ಯರೊಂದಿಗೆ ಮಾತನಾಡಿ',
         speakText: 'ಮಾತನಾಡಿ',
         typeText: 'ಟೈಪ್ ಮಾಡಿ',
@@ -468,6 +476,7 @@ const translations = {
         quickStomach: 'വയറുവേദന',
         quickHeadache: 'തലവേദന',
         quickMedicine: 'മരുന്നു',
+        quickSkin: 'ത്വക്ക് അണുബാധ',
         chatWithDoctorTitle: 'ഡോക്ടറുമായി സംസാരിക്കുക',
         speakText: 'സംസാരിക്കുക',
         typeText: 'ടൈപ്പ് ചെയ്യുക',
@@ -495,6 +504,7 @@ const translations = {
         quickStomach: 'ਪੇਟ ਦਰਦ',
         quickHeadache: 'ਸਿਰ ਦਰਦ',
         quickMedicine: 'ਦਵਾ',
+        quickSkin: 'ਚਮੜੀ ਦਾ ਸੰਕਰਮਣ',
         chatWithDoctorTitle: 'ਡਾਕਟਰ ਨਾਲ ਗੱਲ ਕਰੋ',
         speakText: 'ਬੋਲੋ',
         typeText: 'ਲਿਖੋ',
@@ -583,12 +593,7 @@ function applyTranslations(lang) {
     setText('quick-stomach', t.quickStomach);
     setText('quick-headache', t.quickHeadache);
     setText('quick-medicine', t.quickMedicine);
-    // Newly added quick options (set only if present in translation)
-    setText('quick-cough', t.quickCough);
-    setText('quick-gi', t.quickGI);
-    setText('quick-chest', t.quickChest);
-    setText('quick-back', t.quickBack);
-    setText('quick-periods', t.quickPeriods);
+    setText('quick-skin', t.quickSkin);
     setText('chatWithDoctorTitle', t.chatWithDoctorTitle);
     setText('speakText', t.speakText);
     setText('typeText', t.typeText);
@@ -604,6 +609,7 @@ function applyTranslations(lang) {
     setText('chip-stomach', t.chipStomach);
     setText('chip-headache', t.chipHeadache);
     setText('chip-cough', t.chipCough);
+    setText('chip-skin', t.chipSkin);
 
     // Features section
     setText('featuresTitle', t.featuresTitle);
@@ -676,7 +682,11 @@ const symptomKeywords = {
     cough: ['खांसी', 'कफ', 'cough', 'cold', 'जुकाम'],
     chest: ['छाती', 'सीने', 'chest'],
     back: ['पीठ', 'कमर', 'back'],
-    periods: ['पीरियड', 'मासिक', 'period', 'mens', 'menstrual']
+    periods: ['पीरियड', 'मासिक', 'period', 'mens', 'menstrual'],
+    skin: [
+        'त्वचा', 'खुजली', 'दाने', 'लाल', 'फोड़ा', 'चर्म',
+        'skin', 'rash', 'itch', 'itching', 'redness', 'boil', 'pimple', 'fungal', 'ringworm'
+    ]
 };
 
 const severityKeywords = {
@@ -792,6 +802,8 @@ function adviceFor(symptom, days, severity) {
         specific = 'गरम सिकाई, हल्की स्ट्रेचिंग, भारी वजन से बचें। न्यूरो लक्षण (कमजोरी/सुन्नपन) पर डॉक्टर दिखाएं।';
     } else if (symptom === 'periods') {
         specific = 'दर्द में गर्म सिकाई, हाइड्रेशन। अत्यधिक/लंबा ब्लीडिंग या चक्कर में तुरंत डॉक्टर से मिलें।';
+    } else if (symptom === 'skin') {
+        specific = 'त्वचा संक्रमण के लिए: प्रभावित जगह साफ और सूखी रखें, खरोंचें नहीं। हल्की खुजली/दाने हों तो क्लोट्रिमाजोल जैसी एंटी-फंगल क्रीम दिन में 2 बार 1-2 हफ्ते लगाएं। पस, तेज दर्द, तेजी से फैलना, चेहरा/आंख प्रभावित, तेज बुखार या मधुमेह हो तो डॉक्टर से मिलें।\nFor skin infections: keep area clean and dry, avoid scratching. For mild itchy rash, use an antifungal cream (e.g., clotrimazole) twice daily for 1-2 weeks. If pus, severe pain, rapid spread, face/eye involvement, high fever, or diabetes, see a doctor.';
     }
     const dayText = days ? `अवधि: ${days} दिन / Duration: ${days} days.\n` : '';
     const sevText = severity ? `तीव्रता: ${severity} / Severity: ${severity}.\n` : '';
@@ -879,6 +891,9 @@ function generateAIResponse(userMessage) {
     } else if (message.includes('पीरियड') || message.includes('period') || message.includes('mens')) {
         conversationState.currentSymptom = 'periods';
         return startRiskScreening();
+    } else if (message.includes('त्वचा') || message.includes('skin') || message.includes('rash') || message.includes('itch')) {
+        conversationState.currentSymptom = 'skin';
+        return startRiskScreening();
     } else {
         return 'कृपया अपने लक्षण सरल शब्दों में बताएं (जैसे: बुखार, पेट दर्द, सिर दर्द, खांसी)।\nPlease describe your symptoms simply (e.g., fever, stomach pain, headache, cough).';
     }
@@ -953,6 +968,9 @@ function showSymptomChecker(evt) {
     } else if (id === 'quick-periods') {
         symptomList = ['देर से पीरियड', 'बहुत ज्यादा ब्लीडिंग', 'दर्द'];
         conversationState.currentSymptom = 'periods';
+        riskState.needed = true;
+    } else if (id === 'quick-skin') {
+        conversationState.currentSymptom = 'skin';
         riskState.needed = true;
     }
     let message = `${label} के लिए कुछ सामान्य विकल्प:\n`;
