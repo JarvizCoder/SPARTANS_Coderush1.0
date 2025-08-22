@@ -1,42 +1,33 @@
 import pandas as pd
-from xgboost import XGBClassifier
-from sklearn.ensemble import RandomForestClassifier
-import numpy as np
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import MultiLabelBinarizer, LabelEncoder
-import joblib
-
-# Load the sample dataset
-df = pd.read_csv('symptom_disease_sample.csv')
-
-import pandas as pd
-import numpy as np
-from xgboost import XGBClassifier
+import xgboost as xgb
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MultiLabelBinarizer, LabelEncoder
 import joblib
+import os
+
+# Define file paths
+DATASET_PATH = 'symptom_disease_augmented.csv'
+RF_MODEL_PATH = 'disease_rf_model.pkl'
+XGB_MODEL_PATH = 'disease_xgb_model.pkl'
+MLB_PATH = 'symptom_mlb.pkl'
+LE_PATH = 'disease_label_encoder.pkl'
 
 # ---------- Load Dataset ----------
-df = pd.read_csv("symptom_disease_sample.csv")
+print(f"Loading dataset from {DATASET_PATH}...")
+df = pd.read_csv(DATASET_PATH)
 
-# Identify symptom columns
-symptom_cols = [col for col in df.columns if col.lower().startswith("symptom")]
+# Identify symptom columns (handles symptom1, symptom2, etc.)
+symptom_cols = [col for col in df.columns if col.lower().startswith('symptom')]
 
 # Target column
 y = df["disease"]
 
-# Drop classes with only one sample to enable stratified splitting
-class_counts = y.value_counts()
-valid_classes = class_counts[class_counts > 1].index
-mask = y.isin(valid_classes)
-df = df[mask].reset_index(drop=True)
-y = df["disease"]
-
 # ---------- Feature Engineering ----------
 # Combine symptoms into a list per row
+print("Processing features...")
 X_symptoms = df[symptom_cols].values.tolist()
-X_symptoms = [[str(s).strip().lower() for s in row if str(s) != "nan" and str(s).strip() != ""] for row in X_symptoms]
+X_symptoms = [[str(s).strip().lower() for s in row if pd.notna(s) and str(s).strip() != ""] for row in X_symptoms]
 
 # Encode symptoms using MultiLabelBinarizer
 mlb = MultiLabelBinarizer()
@@ -46,35 +37,28 @@ X = mlb.fit_transform(X_symptoms)
 le = LabelEncoder()
 y_encoded = le.fit_transform(y)
 
-# ✅ Ensure labels are continuous 0..n_classes-1
-classes = np.unique(y_encoded)
-class_mapping = {old: new for new, old in enumerate(classes)}
-y_encoded = np.array([class_mapping[label] for label in y_encoded])
-
 # ---------- Train/Test Split ----------
-n_classes = len(np.unique(y_encoded))
-min_test_size = n_classes / len(y_encoded)
-test_size = max(0.2, min_test_size)
+print("Splitting data into training and testing sets...")
 X_train, X_test, y_train, y_test = train_test_split(
-    X, y_encoded, test_size=test_size, random_state=42, stratify=y_encoded
+    X, y_encoded, test_size=0.2, random_state=42, stratify=y_encoded
 )
 
-# ---------- Train Models ----------
-# XGBoost needs all possible classes explicitly
-classes = np.unique(y_encoded)
-
-xgb_model = XGBClassifier(use_label_encoder=False, eval_metric="mlogloss")
-xgb_model.fit(X_train, y_train, eval_set=[(X_test, y_test)], verbose=False)
-
-rf_model = RandomForestClassifier(n_estimators=200, random_state=42)
+# ---------- Train Model ----------
+print("Training RandomForest model...")
+rf_model = RandomForestClassifier(random_state=42)
 rf_model.fit(X_train, y_train)
 
-# ---------- Save Models ----------
-joblib.dump(xgb_model, "disease_xgb_model.pkl")
-joblib.dump(rf_model, "disease_rf_model.pkl")
-joblib.dump(mlb, "symptom_mlb.pkl")
-joblib.dump(le, "disease_label_encoder.pkl")
+print("Training XGBoost model...")
+xgb_model = xgb.XGBClassifier(random_state=42, use_label_encoder=False, eval_metric='mlogloss')
+xgb_model.fit(X_train, y_train)
 
-print("✅ Models and encoders saved successfully!")
+# ---------- Save Model and Encoders ----------
+print(f"Saving RandomForest model to {RF_MODEL_PATH}...")
+joblib.dump(rf_model, RF_MODEL_PATH)
 
+print(f"Saving XGBoost model to {XGB_MODEL_PATH}...")
+joblib.dump(xgb_model, XGB_MODEL_PATH)
+joblib.dump(mlb, MLB_PATH)
+joblib.dump(le, LE_PATH)
 
+print("\n✅ Model and encoders saved successfully!")
