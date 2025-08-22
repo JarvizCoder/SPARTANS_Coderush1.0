@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import joblib
 import difflib
+import requests
 
 # Load ML models and encoders
 XGB_PATH = 'disease_xgb_model.pkl'
@@ -23,8 +24,6 @@ if os.path.exists(XGB_PATH) and os.path.exists(RF_PATH) and os.path.exists(MLB_P
     mlb = joblib.load(MLB_PATH)
     le = joblib.load(LE_PATH)
     all_symptoms = list(mlb.classes_)
-
-app = FastAPI()
 
 app = FastAPI()
 
@@ -140,17 +139,8 @@ async def emergency_check(request: Request):
     is_emergency = any_in(t, EMERGENCY_KEYWORDS)
     return {"emergency": is_emergency}
 
-import requests
-
 FASTAPI_URL = "http://127.0.0.1:8000"
 
-# ---------- Page Configuration ----------
-st.set_page_config(
-    page_title="🩺 Virtual Doctor Assistant",
-    page_icon="🏥",
-    layout="centered",
-    initial_sidebar_state="collapsed"
-)
 
 # ---------- Language and Translation ----------
 LANGUAGES = {
@@ -323,6 +313,12 @@ def call_llm(symptoms: str, base_advice: str, lang: str = 'en') -> str:
         return base_advice
 
 def main():
+    st.set_page_config(
+        page_title="🩺 Virtual Doctor Assistant",
+        page_icon="🏥",
+        layout="centered",
+        initial_sidebar_state="collapsed"
+    )
     st.sidebar.header("Language / भाषा")
     lang_choice = st.sidebar.selectbox(
         label=get_text("en", "select_language") + " / " + get_text("hi", "select_language"),
@@ -371,19 +367,19 @@ def main():
     <b>How it works:</b> Select symptoms from the checklist or type them below. Our advanced model (XGBoost, multi-symptom support) predicts the most likely disease and offers detailed explanations for rural healthcare.
     </div>''', unsafe_allow_html=True)
 
-    # Get all unique symptoms from DISEASE_DATABASE
-    all_symptoms = set()
-    try:
-        disease_info_resp = requests.get(f"{FASTAPI_URL}/disease_info")
-        if disease_info_resp.status_code == 200:
-            all_disease_info = disease_info_resp.json()
-            for v in all_disease_info.values():
-                all_symptoms.update(v.get('symptoms', []))
-    except Exception:
-        pass
-    all_symptoms = sorted(all_symptoms)
+    # Use locally loaded symptoms instead of trying to fetch from API
+    available_symptoms = []
+    if all_symptoms:  # Use symptoms loaded from the model at the top of the file
+        available_symptoms = sorted(all_symptoms)
+    else:
+        # Fallback to a predefined list if model symptoms aren't available
+        available_symptoms = [
+            "fever", "cough", "fatigue", "difficulty breathing", "headache", 
+            "sore throat", "body ache", "runny nose", "nausea", "vomiting", 
+            "diarrhea", "chest pain", "abdominal pain", "rash", "joint pain"
+        ]
 
-    selected_symptoms = st.multiselect('✔️ Select your symptoms:', all_symptoms)
+    selected_symptoms = st.multiselect('✔️ Select your symptoms:', available_symptoms)
     symptoms_input = st.text_input('Or type symptoms separated by commas (e.g., fever, cough, headache)')
 
     # Merge selected and typed symptoms
@@ -391,54 +387,88 @@ def main():
     if symptoms_input:
         symptoms_list += [s.strip() for s in symptoms_input.split(',') if s.strip() and s.strip() not in symptoms_list]
 
+    def run_local_prediction(symptoms_list):
+        if xgb_model is not None and rf_model is not None and mlb is not None and le is not None:
+            # Fuzzy match input symptoms to known symptoms
+            matched_symptoms = []
+            for s in symptoms_list:
+                match = difflib.get_close_matches(s, all_symptoms, n=1, cutoff=0.7)
+                if match:
+                    matched_symptoms.append(match[0])
+            
+            if not matched_symptoms:
+                st.info("No close symptom matches found.")
+                return
+
+            X_input = mlb.transform([matched_symptoms])
+            # Get prediction probabilities from both models
+            xgb_probs = xgb_model.predict_proba(X_input)[0]
+            rf_probs = rf_model.predict_proba(X_input)[0]
+            avg_probs = (xgb_probs + rf_probs) / 2
+            best_idx = avg_probs.argmax()
+            pred_disease = le.inverse_transform([best_idx])[0]
+            confidence = float(avg_probs[best_idx])
+            
+            st.success(f'Predicted Disease: **{pred_disease}**')
+            st.info(f"Confidence Score: {confidence:.2%}")
+            st.write(f"Matched Symptoms: {', '.join(matched_symptoms)}")
+            
+            # Display disease info from local database
+            with st.expander('Show Detailed Disease Info', expanded=False):
+                if pred_disease in DISEASE_DATABASE:
+                    info = DISEASE_DATABASE[pred_disease]
+                    st.markdown(f"### {pred_disease.title()} - Details")
+                    st.write(f"**Symptoms:** {', '.join(info['symptoms'])}")
+                    st.write(f"**Risk factors:** {', '.join(info['risk_factors'])}")
+                    st.write(f"**Treatment:** {', '.join(info['treatment'])}")
+                    st.write(f"**Emergency signs:** {', '.join(info['emergency_signs'])}")
+                else:
+                    st.info('No detailed info found for this disease.')
+        else:
+            st.error("ML models not loaded. Cannot make local predictions.")
+
     if st.button('🔍 Predict Disease', type="primary"):
         if not symptoms_list:
             st.warning('Please select or enter at least one symptom.')
         else:
             try:
+                # Try API first
                 response = requests.post(
                     f"{FASTAPI_URL}/predict_disease",
                     json={"symptoms": symptoms_list}
                 )
-                if response.status_code == 200:
-                    result = response.json()
-                    pred = result.get('predicted_disease')
-                    confidence = result.get('confidence')
-                    matched = result.get('matched_symptoms', [])
-                    note = result.get('note', None)
-                    if pred is not None and pred != "":
-                        st.success(f'Predicted Disease: **{pred}**')
-                        if confidence is not None:
-                            st.info(f"Confidence Score: {confidence:.2%}")
-                        if matched:
-                            st.write(f"Matched Symptoms: {', '.join(matched)}")
-                        with st.expander('Show Detailed Disease Info', expanded=False):
-                            try:
-                                disease_info_resp = requests.get(f"{FASTAPI_URL}/disease_info")
-                                if disease_info_resp.status_code == 200:
-                                    all_disease_info = disease_info_resp.json()
-                                    info = all_disease_info.get(pred, None)
-                                    if info:
-                                        st.markdown(f"### {pred.title()} - Details")
-                                        st.write(f"{info['explanation']}")
-                                        st.write(f"**Symptoms:** {', '.join(info['symptoms'])}")
-                                        st.write(f"**Risk factors:** {', '.join(info['risk_factors'])}")
-                                        st.write(f"**Treatment:** {', '.join(info['treatment'])}")
-                                        st.write(f"**Emergency signs:** {', '.join(info['emergency_signs'])}")
-                                    else:
-                                        st.info('No detailed info found for this disease.')
-                            except Exception as e:
-                                st.error(f'Error fetching disease info: {e}')
-                    elif note:
-                        st.info(note)
-                    elif 'error' in result:
-                        st.error(f"Prediction error: {result['error']}")
-                    else:
-                        st.info('No prediction could be made. Please try selecting different symptoms.')
+                response.raise_for_status()  # Raise an exception for bad status codes (4xx or 5xx)
+                result = response.json()
+                # Process API result
+                pred = result.get('predicted_disease')
+                confidence = result.get('confidence')
+                matched = result.get('matched_symptoms', [])
+                note = result.get('note', None)
+                
+                if pred is not None and pred != "":
+                    st.success(f'Predicted Disease: **{pred}**')
+                    if confidence is not None:
+                        st.info(f"Confidence Score: {confidence:.2%}")
+                    if matched:
+                        st.write(f"Matched Symptoms: {', '.join(matched)}")
+                    with st.expander('Show Detailed Disease Info', expanded=False):
+                        if pred in DISEASE_DATABASE:
+                            info = DISEASE_DATABASE[pred]
+                            st.markdown(f"### {pred.title()} - Details")
+                            st.write(f"**Symptoms:** {', '.join(info['symptoms'])}")
+                            st.write(f"**Risk factors:** {', '.join(info['risk_factors'])}")
+                            st.write(f"**Treatment:** {', '.join(info['treatment'])}")
+                            st.write(f"**Emergency signs:** {', '.join(info['emergency_signs'])}")
+                        else:
+                            st.info('No detailed info found for this disease.')
+                elif note:
+                    st.info(note)
                 else:
-                    st.error(f'API error: {response.status_code}')
-            except Exception as e:
-                st.error(f'Could not connect to prediction API: {e}')
+                    st.info('No prediction could be made. Please try selecting different symptoms.')
+
+            except requests.exceptions.RequestException as e:
+                st.warning(f'Could not connect to API: {e}. Using local prediction instead.')
+                run_local_prediction(symptoms_list)
 
     if st.button(get_text(lang_code, "analyze_button"), type="primary"):
         if not all_symptoms_text.strip():
