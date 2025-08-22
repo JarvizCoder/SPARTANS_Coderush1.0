@@ -12,6 +12,7 @@
   <!-- Header with Language Toggle -->
   <header class="header">
     <div class="container">
+      <button id="sidebarToggle" class="hamburger-btn" aria-label="Open menu">☰</button>
       <div class="logo">
         <span class="logo-icon">🩺</span>
         <span class="logo-text" id="brandName">स्वास्थ्य साथी</span>
@@ -34,6 +35,28 @@
       </div>
     </div>
   </header>
+
+  <!-- Sidebar Navigation -->
+  <nav id="sidebar" class="sidebar" aria-label="Village menu">
+    <div class="sidebar-header">
+      <div class="sidebar-title">📋 Menu</div>
+      <button class="sidebar-close" onclick="closeSidebar()" aria-label="Close menu">✕</button>
+    </div>
+    <div class="sidebar-content">
+      <div class="sidebar-section">
+        <div class="sidebar-section-title">🕘 Chat History</div>
+        <div class="sidebar-actions" style="margin-bottom:8px;">
+          <input id="historySearch" class="sidebar-input" type="text" placeholder="Search history..." aria-label="Search history" />
+          <span id="historyCount" class="sidebar-meta"></span>
+        </div>
+        <ul id="historyList" class="sidebar-list"></ul>
+        <div class="sidebar-actions">
+          <button class="sidebar-btn danger" onclick="clearHistory()">Clear History</button>
+        </div>
+      </div>
+    </div>
+  </nav>
+  <div id="sidebarOverlay" class="sidebar-overlay" onclick="closeSidebar()"></div>
 
   <!-- Hero Section -->
   <section class="hero">
@@ -90,7 +113,7 @@
           <span class="quick-text" id="quick-gi">उल्टी/दस्त</span>
         </button>
         <button class="quick-btn" onclick="showSymptomChecker()">
-          <span class="quick-icon">❤️‍🔥</span>
+          <span class="quick-icon">🫁</span>
           <span class="quick-text" id="quick-chest">छाती दर्द</span>
         </button>
         <button class="quick-btn" onclick="showSymptomChecker()">
@@ -112,19 +135,23 @@
   <!-- Chatbot Section -->
   <section class="chatbot" id="chatbot-section">
     <div class="container">
-      <div class="chat-header">
-        <h2 class="section-title" id="chatWithDoctorTitle">डॉक्टर से बात करें</h2>
-        <div class="chat-controls">
-          <button class="voice-btn" onclick="startVoiceChat()">
-            <span class="voice-icon">🎤</span>
-            <span class="voice-text" id="speakText">बोलें</span>
-          </button>
-          <button class="text-btn active" onclick="switchToText()">
-            <span class="text-icon">✏️</span>
-            <span class="voice-text" id="typeText">लिखें</span>
-          </button>
+        <div class="chat-header">
+          <h2 class="section-title" id="chatWithDoctorTitle">डॉक्टर से बात करें</h2>
+          <div class="chat-controls">
+            <button class="voice-btn" onclick="startVoiceChat()">
+              <span class="voice-icon">🎤</span>
+              <span class="voice-text" id="speakText">बोलें</span>
+            </button>
+            <button class="text-btn active" onclick="switchToText()">
+              <span class="text-icon">✏️</span>
+              <span class="voice-text" id="typeText">लिखें</span>
+            </button>
+            <button class="text-btn" onclick="clearChat()" title="Clear chat">
+              <span class="text-icon">🧹</span>
+              <span class="voice-text" id="clearChatText">Clear</span>
+            </button>
+          </div>
         </div>
-      </div>
       
       <div class="chat-container">
         <div class="chat-window" id="chat-window">
@@ -169,7 +196,7 @@
           <div class="feature-icon">📋</div>
           <h3 class="feature-title" id="feature4Title">मेडिकल रिकॉर्ड</h3>
           <p class="feature-desc" id="feature4Desc">आपकी बीमारी का रिकॉर्ड सेव करें</p>
-        </div>x
+        </div>
       </div>
     </div>
   </section>
