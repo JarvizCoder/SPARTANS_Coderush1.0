@@ -1,0 +1,31 @@
+disease,symptom1,symptom2,symptom3
+flu,fever,cough,body ache
+flu,fever,headache,runny nose
+cold,sneezing,runny nose,sore throat
+cold,congestion,headache,sneezing
+malaria,fever,chills,sweating
+malaria,headache,nausea,body ache
+typhoid,fever,abdominal pain,headache
+typhoid,weakness,loss of appetite,diarrhea
+dengue,fever,body ache,rash
+dengue,nausea,headache,joint pain
+diabetes,frequent urination,excessive thirst,weight loss
+diabetes,fatigue,blurred vision,slow healing wounds
+hypertension,headache,dizziness,vision problems
+hypertension,shortness of breath,chest pain,irregular heartbeat
+tuberculosis,cough,chest pain,weight loss
+tuberculosis,fever,night sweats,fatigue
+asthma,shortness of breath,wheezing,cough
+asthma,chest tightness,night cough,breathlessness
+pneumonia,fever,cough,chest pain
+pneumonia,shortness of breath,fatigue,phlegm
+covid-19,fever,cough,loss of smell
+covid-19,shortness of breath,headache,sore throat
+food_poisoning,diarrhea,vomiting,stomach cramps
+food_poisoning,nausea,fever,weakness
+appendicitis,abdominal pain,fever,nausea
+appendicitis,loss of appetite,vomiting,abdominal swelling
+migraine,headache,nausea,sensitivity to light
+migraine,visual aura,vomiting,dizziness
+allergy,sneezing,itchy eyes,runny nose
+allergy,skin rash,swelling,breathlessness
