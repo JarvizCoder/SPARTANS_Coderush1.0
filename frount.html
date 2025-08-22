@@ -98,6 +98,10 @@
           <span class="quick-text" id="quick-back">पीठ दर्द</span>
         </button>
         <button class="quick-btn" onclick="showSymptomChecker()">
+          <span class="quick-icon">🧴</span>
+          <span class="quick-text" id="quick-skin">त्वचा संक्रमण</span>
+        </button>
+        <button class="quick-btn" onclick="showSymptomChecker()">
           <span class="quick-icon">🩸</span>
           <span class="quick-text" id="quick-periods">पीरियड समस्या</span>
         </button>
@@ -162,16 +166,10 @@
         </div>
         
         <div class="feature-card">
-          <div class="feature-icon">📱</div>
-          <h3 class="feature-title" id="feature3Title">वीडियो कॉल</h3>
-          <p class="feature-desc" id="feature3Desc">असली डॉक्टर से वीडियो पर बात करें</p>
-        </div>
-        
-        <div class="feature-card">
           <div class="feature-icon">📋</div>
           <h3 class="feature-title" id="feature4Title">मेडिकल रिकॉर्ड</h3>
           <p class="feature-desc" id="feature4Desc">आपकी बीमारी का रिकॉर्ड सेव करें</p>
-        </div>
+        </div>x
       </div>
     </div>
   </section>
@@ -197,16 +195,10 @@
           </div>
         </div>
         
-        <div class="step">
-          <div class="step-number">3</div>
-          <div class="step-content">
-            <h3 id="step3Title">डॉक्टर से मिलें</h3>
-            <p id="step3Desc">वीडियो कॉल पर डॉक्टर से बात करें</p>
-          </div>
-        </div>
+        
         
         <div class="step">
-          <div class="step-number">4</div>
+          <div class="step-number">3</div>
           <div class="step-content">
             <h3 id="step4Title">रिकॉर्ड सेव करें</h3>
             <p id="step4Desc">आपकी जानकारी सुरक्षित रखी जाएगी</p>
@@ -216,35 +208,7 @@
     </div>
   </section>
 
-  <!-- For Village Doctors -->
-  <section class="doctors-section">
-    <div class="container">
-      <h2 class="section-title" id="doctorsTitle">गाँव के डॉक्टरों के लिए</h2>
-      <div class="doctor-benefits">
-        <div class="benefit-card">
-          <div class="benefit-icon">📊</div>
-          <h3 id="benefit1Title">मरीजों का रिकॉर्ड</h3>
-          <p id="benefit1Desc">सभी मरीजों की जानकारी एक जगह</p>
-        </div>
-        
-        <div class="benefit-card">
-          <div class="benefit-icon">🔗</div>
-          <h3 id="benefit2Title">बड़े डॉक्टरों से जुड़ें</h3>
-          <p id="benefit2Desc">मुश्किल केस में मदद लें</p>
-        </div>
-        
-        <div class="benefit-card">
-          <div class="benefit-icon">📱</div>
-          <h3 id="benefit3Title">मोबाइल ऐप</h3>
-          <p id="benefit3Desc">कहीं भी मरीजों की देखभाल करें</p>
-        </div>
-      </div>
-      
-      <div class="doctor-cta">
-        <!-- Become Doctor button removed -->
-      </div>
-    </div>
-  </section>
+  
 
   <!-- Nearby Hospitals & Clinics -->
   <section class="nearby" id="nearby">
@@ -255,8 +219,17 @@
         <span class="btn-icon">📍</span>
         <span class="btn-text" id="findNearbyBtnText">Find Nearby</span>
       </button>
-      <div id="nearbyStatus" class="nearby-status" style="margin-top:12px;"></div>
-      <ul id="nearbyResults" class="nearby-list" style="margin-top:12px; list-style: none; padding-left: 0;"></ul>
+      <div class="nearby-grid">
+        <div class="nearby-left">
+          <div id="nearbyStatus" class="nearby-status"></div>
+          <ul id="nearbyResults" class="nearby-list"></ul>
+        </div>
+        <div class="nearby-right">
+          <div class="nearby-map">
+            <iframe id="nearbyMapFrame" title="Location Map" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
+          </div>
+        </div>
+      </div>
     </div>
   </section>
 
