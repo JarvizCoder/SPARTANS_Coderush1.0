@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>गाँव का डॉक्टर - Virtual Doctor Assistant</title>
+  <link rel="stylesheet" href="front.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+  <!-- Header with Language Toggle -->
+  <header class="header">
+    <div class="container">
+      <div class="logo">
+        <span class="logo-icon">🩺</span>
+        <span class="logo-text" id="brandName">स्वास्थ्य साथी</span>
+      </div>
+      <div class="language-toggle">
+        <div class="select-wrapper">
+        <select id="langSelect" onchange="changeLanguage(this.value)">
+          <option value="en" selected>English</option>
+          <option value="hi">हिंदी</option>
+          <option value="mr">मराठी</option>
+          <option value="gu">ગુજરાતી</option>
+          <option value="bn">বাংলা</option>
+          <option value="ta">தமிழ்</option>
+          <option value="te">తెలుగు</option>
+          <option value="kn">ಕನ್ನಡ</option>
+          <option value="ml">മലയാളം</option>
+          <option value="pa">ਪੰਜਾਬੀ</option>
+        </select>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Hero Section -->
+  <section class="hero">
+    <div class="container">
+      <div class="hero-content">
+        <h1 class="hero-title">
+          <span class="title-main" id="title-main">गाँव का डॉक्टर</span>
+          <span class="title-sub" id="title-sub">Virtual Doctor Assistant</span>
+        </h1>
+        <p class="hero-description" id="hero-desc">अपने गाँव में ही डॉक्टर की सलाह पाएं</p>
+        
+        <div class="hero-buttons">
+          <button class="btn btn-primary" onclick="startConsultation()">
+            <span class="btn-icon">💬</span>
+            <span class="btn-text" id="startChatText">बात करें</span>
+          </button>
+        </div>
+      </div>
+      
+      <div class="hero-image">
+        <div class="doctor-illustration">👨‍⚕️</div>
+        <div class="village-illustration">🏘️</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Quick Access Buttons -->
+  <section class="quick-access">
+    <div class="container">
+      <h2 class="section-title" id="quickHelpTitle">जल्दी मदद</h2>
+      <div class="quick-buttons">
+        <button class="quick-btn" onclick="showSymptomChecker()">
+          <span class="quick-icon">🤒</span>
+          <span class="quick-text" id="quick-fever">बुखार</span>
+        </button>
+        <button class="quick-btn" onclick="showSymptomChecker()">
+          <span class="quick-icon">🤢</span>
+          <span class="quick-text" id="quick-stomach">पेट दर्द</span>
+        </button>
+        <button class="quick-btn" onclick="showSymptomChecker()">
+          <span class="quick-icon">🤕</span>
+          <span class="quick-text" id="quick-headache">सिर दर्द</span>
+        </button>
+        <button class="quick-btn" onclick="showSymptomChecker()">
+          <span class="quick-icon">💊</span>
+          <span class="quick-text" id="quick-medicine">दवा</span>
+        </button>
+        <button class="quick-btn" onclick="showSymptomChecker()">
+          <span class="quick-icon">😷</span>
+          <span class="quick-text" id="quick-cough">खांसी/जुकाम</span>
+        </button>
+        <button class="quick-btn" onclick="showSymptomChecker()">
+          <span class="quick-icon">🤮</span>
+          <span class="quick-text" id="quick-gi">उल्टी/दस्त</span>
+        </button>
+        <button class="quick-btn" onclick="showSymptomChecker()">
+          <span class="quick-icon">❤️‍🔥</span>
+          <span class="quick-text" id="quick-chest">छाती दर्द</span>
+        </button>
+        <button class="quick-btn" onclick="showSymptomChecker()">
+          <span class="quick-icon">🦴</span>
+          <span class="quick-text" id="quick-back">पीठ दर्द</span>
+        </button>
+        <button class="quick-btn" onclick="showSymptomChecker()">
+          <span class="quick-icon">🩸</span>
+          <span class="quick-text" id="quick-periods">पीरियड समस्या</span>
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Chatbot Section -->
+  <section class="chatbot" id="chatbot-section">
+    <div class="container">
+      <div class="chat-header">
+        <h2 class="section-title" id="chatWithDoctorTitle">डॉक्टर से बात करें</h2>
+        <div class="chat-controls">
+          <button class="voice-btn" onclick="startVoiceChat()">
+            <span class="voice-icon">🎤</span>
+            <span class="voice-text" id="speakText">बोलें</span>
+          </button>
+          <button class="text-btn active" onclick="switchToText()">
+            <span class="text-icon">✏️</span>
+            <span class="voice-text" id="typeText">लिखें</span>
+          </button>
+        </div>
+      </div>
+      
+      <div class="chat-container">
+        <div class="chat-window" id="chat-window">
+        </div>
+        
+        <div class="chat-input-area">
+          <div class="input-container">
+            <input type="text" id="userInput" placeholder="अपने लक्षण बताएं..." />
+            <button class="send-btn" onclick="sendMessage()">
+              <span class="send-icon">📤</span>
+            </button>
+          </div>
+          <div class="suggestion-chips">
+            <button class="chip" onclick="useSuggestion(this.textContent.trim())"><span id="chip-fever">बुखार है</span></button>
+            <button class="chip" onclick="useSuggestion(this.textContent.trim())"><span id="chip-stomach">पेट दर्द</span></button>
+            <button class="chip" onclick="useSuggestion(this.textContent.trim())"><span id="chip-headache">सिर दर्द</span></button>
+            <button class="chip" onclick="useSuggestion(this.textContent.trim())"><span id="chip-cough">खांसी</span></button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features Section -->
+  <section class="features">
+    <div class="container">
+      <h2 class="section-title" id="featuresTitle">हमारी सेवाएं</h2>
+      <div class="feature-grid">
+        <div class="feature-card">
+          <div class="feature-icon">🔍</div>
+          <h3 class="feature-title" id="feature1Title">लक्षण जांच</h3>
+          <p class="feature-desc" id="feature1Desc">आपके लक्षणों के आधार पर बीमारी का पता लगाएं</p>
+        </div>
+        
+        <div class="feature-card">
+          <div class="feature-icon">🤖</div>
+          <h3 class="feature-title" id="feature2Title">AI डॉक्टर</h3>
+          <p class="feature-desc" id="feature2Desc">कंप्यूटर डॉक्टर से तुरंत सलाह पाएं</p>
+        </div>
+        
+        <div class="feature-card">
+          <div class="feature-icon">📱</div>
+          <h3 class="feature-title" id="feature3Title">वीडियो कॉल</h3>
+          <p class="feature-desc" id="feature3Desc">असली डॉक्टर से वीडियो पर बात करें</p>
+        </div>
+        
+        <div class="feature-card">
+          <div class="feature-icon">📋</div>
+          <h3 class="feature-title" id="feature4Title">मेडिकल रिकॉर्ड</h3>
+          <p class="feature-desc" id="feature4Desc">आपकी बीमारी का रिकॉर्ड सेव करें</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- How It Works -->
+  <section class="steps">
+    <div class="container">
+      <h2 class="section-title" id="howTitle">कैसे काम करता है</h2>
+      <div class="timeline">
+        <div class="step">
+          <div class="step-number">1</div>
+          <div class="step-content">
+            <h3 id="step1Title">लक्षण बताएं</h3>
+            <p id="step1Desc">चैट या बोलकर अपने लक्षण बताएं</p>
+          </div>
+        </div>
+        
+        <div class="step">
+          <div class="step-number">2</div>
+          <div class="step-content">
+            <h3 id="step2Title">AI जांच</h3>
+            <p id="step2Desc">कंप्यूटर आपकी बीमारी का पता लगाएगा</p>
+          </div>
+        </div>
+        
+        <div class="step">
+          <div class="step-number">3</div>
+          <div class="step-content">
+            <h3 id="step3Title">डॉक्टर से मिलें</h3>
+            <p id="step3Desc">वीडियो कॉल पर डॉक्टर से बात करें</p>
+          </div>
+        </div>
+        
+        <div class="step">
+          <div class="step-number">4</div>
+          <div class="step-content">
+            <h3 id="step4Title">रिकॉर्ड सेव करें</h3>
+            <p id="step4Desc">आपकी जानकारी सुरक्षित रखी जाएगी</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- For Village Doctors -->
+  <section class="doctors-section">
+    <div class="container">
+      <h2 class="section-title" id="doctorsTitle">गाँव के डॉक्टरों के लिए</h2>
+      <div class="doctor-benefits">
+        <div class="benefit-card">
+          <div class="benefit-icon">📊</div>
+          <h3 id="benefit1Title">मरीजों का रिकॉर्ड</h3>
+          <p id="benefit1Desc">सभी मरीजों की जानकारी एक जगह</p>
+        </div>
+        
+        <div class="benefit-card">
+          <div class="benefit-icon">🔗</div>
+          <h3 id="benefit2Title">बड़े डॉक्टरों से जुड़ें</h3>
+          <p id="benefit2Desc">मुश्किल केस में मदद लें</p>
+        </div>
+        
+        <div class="benefit-card">
+          <div class="benefit-icon">📱</div>
+          <h3 id="benefit3Title">मोबाइल ऐप</h3>
+          <p id="benefit3Desc">कहीं भी मरीजों की देखभाल करें</p>
+        </div>
+      </div>
+      
+      <div class="doctor-cta">
+        <!-- Become Doctor button removed -->
+      </div>
+    </div>
+  </section>
+
+  <!-- Nearby Hospitals & Clinics -->
+  <section class="nearby" id="nearby">
+    <div class="container">
+      <h2 class="section-title" id="nearbyTitle">Nearby Hospitals & Clinics</h2>
+      <p id="nearbyDesc">Find medical facilities near your current location.</p>
+      <button class="btn btn-primary" onclick="findNearbyFacilities()" id="findNearbyBtn">
+        <span class="btn-icon">📍</span>
+        <span class="btn-text" id="findNearbyBtnText">Find Nearby</span>
+      </button>
+      <div id="nearbyStatus" class="nearby-status" style="margin-top:12px;"></div>
+      <ul id="nearbyResults" class="nearby-list" style="margin-top:12px; list-style: none; padding-left: 0;"></ul>
+    </div>
+  </section>
+
+  <!-- Emergency Section -->
+  <section class="emergency">
+    <div class="container">
+      <div class="emergency-content">
+        <div class="emergency-icon">🚨</div>
+        <div class="emergency-text">
+          <h2 id="emTitle">आपातकालीन स्थिति?</h2>
+          <p id="emLine">तुरंत डॉक्टर से बात करें या अस्पताल जाएं</p>
+        </div>
+        <button class="btn btn-emergency" onclick="callEmergency()">
+          <span class="btn-icon">📞</span>
+          <span class="btn-text" id="callNowText">तुरंत कॉल</span>
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-content">
+        <div class="footer-section">
+          <h3 id="footerBrand">गाँव का डॉक्टर</h3>
+          <p id="footerTagline">हर गाँव में स्वास्थ्य सेवा</p>
+        </div>
+        
+        <div class="footer-section">
+          <h3 id="contactTitle">संपर्क</h3>
+          <p>📞 1800-123-4567</p>
+          <p>📧 help@gaonkadoctor.com</p>
+        </div>
+        
+        <div class="footer-section">
+          <h3>भाषाएं / Languages</h3>
+          <p>हिंदी, English, मराठी, गुजराती, বাংলা, தமிழ், తెలుగు, ಕನ್ನಡ, മലയാളം, ਪੰਜਾਬੀ</p>
+        </div>
+      </div>
+      
+      <div class="footer-bottom">
+        <p>© 2025 गाँव का डॉक्टर | Ayushman Bharat के साथ जुड़ा हुआ</p>
+      </div>
+    </div>
+  </footer>
+
+  <script src="front.js"></script>
+</body>
+</html>
