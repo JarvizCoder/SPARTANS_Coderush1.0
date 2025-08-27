@@ -6,6 +6,7 @@
   <title>गाँव का डॉक्टर - Virtual Doctor Assistant</title>
   <link rel="stylesheet" href="front.css" />
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
 </head>
 <body>
 
@@ -17,20 +18,25 @@
         <span class="logo-icon">🩺</span>
         <span class="logo-text" id="brandName">स्वास्थ्य साथी</span>
       </div>
-      <div class="language-toggle">
-        <div class="select-wrapper">
-        <select id="langSelect" onchange="changeLanguage(this.value)">
-          <option value="en" selected>English</option>
-          <option value="hi">हिंदी</option>
-          <option value="mr">मराठी</option>
-          <option value="gu">ગુજરાતી</option>
-          <option value="bn">বাংলা</option>
-          <option value="ta">தமிழ்</option>
-          <option value="te">తెలుగు</option>
-          <option value="kn">ಕನ್ನಡ</option>
-          <option value="ml">മലയാളം</option>
-          <option value="pa">ਪੰਜਾਬੀ</option>
-        </select>
+      <div class="header-controls">
+        <button id="muteButton" class="mute-btn" onclick="toggleMute()" title="Mute/Unmute voice" aria-label="Mute/Unmute voice">
+          <i class="fas fa-volume-up"></i>
+        </button>
+        <div class="language-toggle">
+          <div class="select-wrapper">
+            <select id="langSelect" onchange="changeLanguage(this.value)">
+              <option value="en" selected>English</option>
+              <option value="hi">हिंदी</option>
+              <option value="mr">मराठी</option>
+              <option value="gu">ગુજરાતી</option>
+              <option value="bn">বাংলা</option>
+              <option value="ta">தமிழ்</option>
+              <option value="te">తెలుగు</option>
+              <option value="kn">ಕನ್ನಡ</option>
+              <option value="ml">മലയാളം</option>
+              <option value="pa">ਪੰਜਾਬੀ</option>
+            </select>
+          </div>
         </div>
       </div>
     </div>
@@ -160,9 +166,12 @@
         <div class="chat-input-area">
           <div class="input-container">
             <input type="text" id="userInput" placeholder="अपने लक्षण बताएं..." />
-            <button class="send-btn" onclick="sendMessage()">
+            <button class="symptom-picker-btn" onclick="showSymptomModal()" title="Select Symptoms">
+              <i class="fas fa-plus"></i>
+          </button>
+          <button class="send-btn" onclick="sendMessage()">
               <span class="send-icon">📤</span>
-            </button>
+          </button>
           </div>
           <div class="suggestion-chips">
             <button class="chip" onclick="useSuggestion(this.textContent.trim())"><span id="chip-fever">बुखार है</span></button>
@@ -174,6 +183,38 @@
       </div>
     </div>
   </section>
+
+  <!-- Symptom Selection Modal -->
+  <div id="symptomModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="symptomModalTitle">Select Your Symptoms</h2>
+        <span class="close" onclick="closeSymptomModal()">&times;</span>
+      </div>
+      <div class="modal-body">
+        <div class="search-container">
+          <input type="text" id="symptomSearch" placeholder="Search symptoms..." oninput="filterSymptoms()">
+        </div>
+        <div class="symptom-categories">
+          <button class="category-btn active" onclick="filterByCategory('all')">All</button>
+          <button class="category-btn" onclick="filterByCategory('general')">General</button>
+          <button class="category-btn" onclick="filterByCategory('head')">Head</button>
+          <button class="category-btn" onclick="filterByCategory('chest')">Chest</button>
+          <button class="category-btn" onclick="filterByCategory('stomach')">Stomach</button>
+          <button class="category-btn" onclick="filterByCategory('limbs')">Limbs</button>
+        </div>
+        <div id="symptomsList" class="symptoms-list">
+          <!-- Symptoms will be populated by JavaScript -->
+        </div>
+      </div>
+      <div class="modal-footer">
+        <div class="selected-symptoms" id="selectedSymptoms">
+          <span id="selectedCount">0</span> symptoms selected
+        </div>
+        <button class="btn btn-primary" onclick="submitSymptoms()">Analyze Symptoms</button>
+      </div>
+    </div>
+  </div>
 
   <!-- Features Section -->
   <section class="features">
@@ -304,6 +345,7 @@
     </div>
   </footer>
 
+  <script src="symptoms.js"></script>
   <script src="front.js"></script>
 </body>
 </html>

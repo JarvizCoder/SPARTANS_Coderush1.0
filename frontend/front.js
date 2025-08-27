@@ -1,3 +1,36 @@
+// Conversation state
+const conversationState = {
+    currentSymptom: null,
+    durationDays: null,
+    severity: null
+};
+
+// Helper function to ask follow-up questions
+function askFollowUpQuestion(symptom) {
+    const question = FOLLOW_UP_QUESTIONS[symptom]?.[currentLanguage] || 
+                   FOLLOW_UP_QUESTIONS[symptom]?.en || 
+                   (currentLanguage === 'hi' 
+                       ? 'कृपया और विवरण दें:' 
+                       : 'Please provide more details:');
+    
+    conversationState.awaitingResponse = true;
+    
+    // Remove typing indicator if it exists
+    const typingIndicator = document.getElementById('typing-indicator');
+    if (typingIndicator) {
+        typingIndicator.remove();
+    }
+    
+    addMessage(question, 'bot');
+    
+    // Set up next follow-up questions if any
+    if (symptom === 'fever') {
+        conversationState.followUpQuestions = ['headache', 'bodyache'];
+    } else if (symptom === 'cough') {
+        conversationState.followUpQuestions = ['fever', 'breathing'];
+    }
+}
+
 // Language management
 let currentLanguage = 'en'; // Default to English
 
@@ -550,19 +583,42 @@ function parseYesNo(msg) {
 
 function startRiskScreening() {
     riskState.needed = true;
-    riskState.askedIndex = -1;
+    riskState.askedIndex = -1; // This will be incremented to 0 in askNextRiskQuestion
     riskState.answers = {};
+    
+    // If no questions, skip to duration
+    if (!riskQuestions || riskQuestions.length === 0) {
+        riskState.needed = false;
+        return followUpAskDuration();
+    }
+    
+    // Start with the first question
     return askNextRiskQuestion();
 }
 
 function askNextRiskQuestion() {
-    riskState.askedIndex += 1;
-    if (riskState.askedIndex >= riskQuestions.length) {
-        // Completed
+    // If no risk questions, skip to duration question
+    if (!riskQuestions || riskQuestions.length === 0) {
         riskState.needed = false;
         return followUpAskDuration();
     }
-    return riskQuestions[riskState.askedIndex].q;
+    
+    riskState.askedIndex += 1;
+    if (riskState.askedIndex >= riskQuestions.length) {
+        // Completed all questions
+        riskState.needed = false;
+        return followUpAskDuration();
+    }
+    
+    // Return the current question
+    const question = riskQuestions[riskState.askedIndex]?.q;
+    if (!question) {
+        console.error('No question found at index:', riskState.askedIndex);
+        riskState.needed = false;
+        return followUpAskDuration();
+    }
+    
+    return question;
 }
 
 function recordRiskAnswer(message) {
@@ -570,7 +626,20 @@ function recordRiskAnswer(message) {
     if (yn === null) {
         return 'कृपया हां/ना में बताएं। / Please answer yes or no.';
     }
+    
+    // Make sure we have a valid question index
+    if (riskState.askedIndex < 0 || riskState.askedIndex >= riskQuestions.length) {
+        console.error('Invalid question index:', riskState.askedIndex);
+        riskState.askedIndex = 0; // Reset to first question
+    }
+    
     const q = riskQuestions[riskState.askedIndex];
+    if (!q) {
+        console.error('No question found for index:', riskState.askedIndex);
+        riskState.needed = false;
+        return 'An error occurred. Please try again.';
+    }
+    
     riskState.answers[q.key] = yn;
     return askNextRiskQuestion();
 }
@@ -668,18 +737,179 @@ function changeLanguage(lang) {
     // Reset conversation state and restart chat with localized greeting only
     try { resetConversation(); } catch (e) {}
     const cw = document.getElementById('chat-window');
-    if (cw) cw.innerHTML = '';
-    const t = translations[lang] || translations.hi;
-    try { addMessage(t.greet || '', 'bot'); } catch (e) {}
+
+// Initialize symptoms data if not already defined
+if (typeof window.symptomsData === 'undefined') {
+    window.symptomsData = [
+        { id: 1, name: 'Fever', category: 'general', description: 'Elevated body temperature' },
+        { id: 2, name: 'Headache', category: 'head', description: 'Pain in the head' },
+        { id: 3, name: 'Cough', category: 'chest', description: 'Expelling air from lungs' },
+        { id: 4, name: 'Nausea', category: 'stomach', description: 'Feeling of sickness' },
+        { id: 5, name: 'Fatigue', category: 'general', description: 'Extreme tiredness' },
+        { id: 6, name: 'Dizziness', category: 'head', description: 'Feeling of spinning' },
+        { id: 7, name: 'Shortness of breath', category: 'chest', description: 'Difficulty breathing' },
+        { id: 8, name: 'Stomach pain', category: 'stomach', description: 'Pain in the abdomen' }
+    ];
+    console.log('Using default symptoms data');
 }
 
-// --- Simple conversation state machine ---
-const conversationState = {
-    currentSymptom: null,      // 'fever' | 'stomach' | 'headache' | 'cough' | null
-    durationDays: null,        // number
-    severity: null,            // 'mild' | 'moderate' | 'severe' | null
+// Function to open symptom modal
+function openSymptomModal() {
+    const modal = document.getElementById('symptomModal');
+    if (modal) {
+        modal.style.display = 'block';
+        document.body.style.overflow = 'hidden'; // Prevent scrolling when modal is open
+        currentCategory = 'all';
+        filterSymptoms('');
+        updateSelectedCount();
+    }
+}
+
+// Function to close symptom modal
+function closeSymptomModal() {
+    const modal = document.getElementById('symptomModal');
+    if (modal) {
+        modal.style.display = 'none';
+        document.body.style.overflow = ''; // Re-enable scrolling
+    }
+}
+
+// Function to filter symptoms by category
+function filterSymptoms(searchTerm = '') {
+    const searchInput = document.getElementById('symptomSearch');
+    if (searchInput) {
+        searchTerm = searchInput.value.toLowerCase();
+    } else {
+        searchTerm = String(searchTerm).toLowerCase();
+    }
+    
+    const filtered = window.symptomsData.filter(symptom => {
+        const matchesSearch = symptom.name.toLowerCase().includes(searchTerm) || 
+                            (symptom.description && symptom.description.toLowerCase().includes(searchTerm));
+        const matchesCategory = currentCategory === 'all' || symptom.category === currentCategory;
+        return matchesSearch && matchesCategory;
+    });
+    
+    renderSymptoms(filtered);
+}
+
+// Function to filter by category
+function filterByCategory(category) {
+    currentCategory = category;
+    filterSymptoms();
+}
+
+// Function to render symptoms list
+function renderSymptoms(symptoms) {
+    const container = document.getElementById('symptomsList');
+    if (!container) return;
+    
+    container.innerHTML = '';
+    
+    if (symptoms.length === 0) {
+        container.innerHTML = '<div class="no-symptoms">No symptoms found matching your search.</div>';
+        return;
+    }
+    
+    symptoms.forEach(symptom => {
+        const isSelected = selectedSymptoms.some(s => s.id === symptom.id);
+        const symptomElement = document.createElement('div');
+        symptomElement.className = `symptom-item ${isSelected ? 'selected' : ''}`;
+        symptomElement.innerHTML = `
+            <div class="symptom-checkbox">
+                <input type="checkbox" id="sym-${symptom.id}" ${isSelected ? 'checked' : ''}>
+                <label for="sym-${symptom.id}"></label>
+            </div>
+            <div class="symptom-info">
+                <div class="symptom-name">${symptom.name}${currentLanguage === 'hi' && symptom.nameHi ? ` / ${symptom.nameHi}` : ''}</div>
+                <div class="symptom-desc">${currentLanguage === 'hi' && symptom.descriptionHi ? symptom.descriptionHi : (symptom.description || '')}</div>
+            </div>
+        `;
+        
+        // Toggle symptom selection on click
+        const checkbox = symptomElement.querySelector('input[type="checkbox"]');
+        checkbox.addEventListener('change', () => {
+            if (checkbox.checked) {
+                if (!selectedSymptoms.some(s => s.id === symptom.id)) {
+                    selectedSymptoms.push(symptom);
+                }
+            } else {
+                selectedSymptoms = selectedSymptoms.filter(s => s.id !== symptom.id);
+            }
+            updateSelectedCount();
+        });
+        
+        container.appendChild(symptomElement);
+    });
+}
+
+// Function to update selected symptoms count
+function updateSelectedCount() {
+    const countElement = document.getElementById('selectedCount');
+    if (countElement) {
+        countElement.textContent = selectedSymptoms.length;
+    }
+    
+    const submitBtn = document.querySelector('.modal-footer .btn-primary');
+    if (submitBtn) {
+        submitBtn.disabled = selectedSymptoms.length === 0;
+    }
+    
+    // Update active state of category buttons
+    document.querySelectorAll('.category-btn').forEach(btn => {
+        if (btn.dataset.category === currentCategory) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
+}
+
+// Function to submit selected symptoms
+function submitSymptoms() {
+    if (selectedSymptoms.length === 0) return;
+    
+    const symptomText = selectedSymptoms.map(s => s.name).join(', ');
+    const message = `I'm experiencing: ${symptomText}`;
+    
+    // Add user message to chat
+    addMessage(message, 'user');
+    
+    // Close modal and reset
+    closeSymptomModal();
+    selectedSymptoms = [];
+    updateSelectedCount();
+    
+    // Clear search
+    const searchInput = document.getElementById('symptomSearch');
+    if (searchInput) searchInput.value = '';
+    
+    // Here you would typically send the symptoms to your backend for analysis
+    // analyzeSymptoms(selectedSymptoms);
+}
+
+// Follow-up questions for symptoms
+const FOLLOW_UP_QUESTIONS = {
+    'fever': {
+        en: 'How high is your fever? (e.g., 100°F/38°C)',
+        hi: 'आपका बुखार कितना है? (जैसे, 100°F/38°C)'
+    },
+    'headache': {
+        en: 'Is the headache constant or does it come and go?',
+        hi: 'क्या सिरदर्द लगातार है या आता-जाता रहता है?'
+    },
+    'cough': {
+        en: 'Is your cough dry or productive (with phlegm)?',
+        hi: 'क्या आपकी खांसी सूखी है या बलगम वाली?'
+    },
+    'stomach pain': {
+        en: 'Where exactly is the pain located? (upper/lower, left/right)',
+        hi: 'दर्द ठीक कहाँ है? (ऊपर/नीचे, बाएँ/दाएँ)'
+    }
 };
 
+// --- Simple conversation state machine ---
+// Using the conversationState defined at the top of the file
 const symptomKeywords = {
     fever: ['बुखार', 'fever', 'ताप', 'ज्वर'],
     stomach: ['पेट', 'stomach', ' पेट दर्द', 'गैस', 'दस्त', 'उल्टी', 'vomit', 'diarrhea'],
@@ -710,175 +940,179 @@ function resetConversation() {
 }
 
 // Chat functionality
-function sendMessage() {
-    const userInput = document.getElementById('userInput');
-    const message = userInput.value.trim();
-    if (message === '') return;
-
-    addMessage(message, 'user');
-    // Save to persistent history (returns id; currently we update last unanswered entry later)
-    try { addToHistory(message); } catch (e) {}
+async function sendMessage() {
+    const userInput = document.getElementById('user-input');
+    const message = userInput.value.trim().toLowerCase();
+    
+    if (!message) return;
+    
+    // Add user message to chat
+    addMessage(userInput.value, 'user');
     userInput.value = '';
-
-    // Generate a contextual response
-    setTimeout(() => {
-        const response = handleConversationFlow(message);
-        addMessage(response, 'bot');
-        // attach answer preview to last history entry
-        try { updateLastHistoryAnswer(response); } catch (e) {}
-    }, 500);
+    
+    // Show typing indicator
+    const typingIndicator = document.createElement('div');
+    typingIndicator.className = 'message bot-message';
+    typingIndicator.id = 'typing-indicator';
+    typingIndicator.innerHTML = '<div class="typing"><span></span><span></span><span></span></div>';
+    document.getElementById('chat-messages').appendChild(typingIndicator);
+    document.getElementById('chat-messages').scrollTop = document.getElementById('chat-messages').scrollHeight;
+    
+    try {
+        // If we're waiting for a response to a follow-up question
+        if (conversationState.awaitingResponse) {
+            // Add the response to symptoms
+            symptoms.push(`${conversationState.currentSymptom}: ${message}`);
+            conversationState.awaitingResponse = false;
+            
+            // Check if there are more follow-up questions
+            const nextQuestion = conversationState.followUpQuestions.shift();
+            if (nextQuestion) {
+                conversationState.currentSymptom = nextQuestion;
+                askFollowUpQuestion(nextQuestion);
+                return;
+            }
+        } 
+        // If this is the first message, start symptom analysis
+        else if (symptoms.length === 0) {
+            // Add initial symptom
+            symptoms.push(message);
+            
+            // Find relevant follow-up questions
+            const symptomKey = Object.keys(FOLLOW_UP_QUESTIONS).find(key => 
+                message.toLowerCase().includes(key)
+            );
+            
+            if (symptomKey) {
+                conversationState.currentSymptom = symptomKey;
+                conversationState.followUpQuestions = [];
+                askFollowUpQuestion(symptomKey);
+                return;
+            }
+        }
+        
+        // If no more follow-up questions, analyze the symptoms
+        const response = await analyzeSymptoms(symptoms.join(', '));
+        
+        // Remove typing indicator
+        document.getElementById('typing-indicator').remove();
+        
+        if (response.error) {
+            addMessage(`Error: ${response.error}`, 'bot');
+            return;
+        }
+        
+        // Show prediction
+        if (response.prediction) {
+            const { disease, confidence, matched_symptoms } = response.prediction;
+            let predictionText = '';
+            
+            if (currentLanguage === 'hi') {
+                predictionText = `संभावित बीमारी: ${disease}<br>विश्वास स्तर: ${(confidence * 100).toFixed(1)}%`;
+                if (matched_symptoms && matched_symptoms.length > 0) {
+                    predictionText += `<br>मिलान किए गए लक्षण: ${matched_symptoms.join(', ')}`;
+                }
+            } else {
+                predictionText = `Predicted Disease: ${disease}<br>Confidence: ${(confidence * 100).toFixed(1)}%`;
+                if (matched_symptoms && matched_symptoms.length > 0) {
+                    predictionText += `<br>Matched Symptoms: ${matched_symptoms.join(', ')}`;
+                }
+            }
+            
+            addMessage(predictionText, 'bot');
+        }
+        
+        // Add medical advice if available
+        if (response.advice) {
+            addMessage(response.advice, 'bot');
+        }
+        
+        // Reset conversation state
+        conversationState = {
+            currentSymptom: null,
+            followUpQuestions: [],
+            awaitingResponse: false
+        };
+        
+        responseText = currentLanguage === 'en' 
+            ? 'I apologize, but I am unable to process your request at the moment.' 
+            : 'माफ़ कीजिए, मैं अभी आपके अनुरोध को संसाधित नहीं कर पा रहा हूं।';
+        
+        addMessage(responseText, 'bot');
+        
+    } catch (error) {
+        console.error('Error sending message:', error);
+        const errorMessage = currentLanguage === 'en' 
+            ? `Sorry, there was an error: ${error.message || 'Please try again.'}`
+            : `क्षमा करें, एक त्रुटि हुई: ${error.message || 'कृपया पुनः प्रयास करें।'}`;
+        addMessage(errorMessage, 'bot');
+    } finally {
+        // Always remove typing indicator
+        if (typingIndicator && typingIndicator.parentNode) {
+            typingIndicator.parentNode.removeChild(typingIndicator);
+        }
+    }
 }
 
 // --- Text to Speech ---
 let ttsEnabled = true; // simple global toggle if needed later
 let ttsRetryCount = 0; // guard retries until voices load
 let __ttsUnlockHandler = null;
+let isMuted = false; // Track mute state
+let synth = window.speechSynthesis;
+let voices = [];
 
-function setupTTSUnlock() {
-    if (__ttsUnlockHandler) return;
-    const h = () => {
-        try {
-            const s = window.speechSynthesis;
-            if (s) {
-                try { s.resume(); } catch (e) {}
-                try { s.getVoices(); } catch (e) {}
-            }
-        } catch (e) {}
-        document.removeEventListener('click', h);
-        document.removeEventListener('keydown', h);
-        document.removeEventListener('touchstart', h);
-        __ttsUnlockHandler = null;
-    };
-    __ttsUnlockHandler = h;
-    document.addEventListener('click', h, { once: true, capture: true });
-    document.addEventListener('keydown', h, { once: true, capture: true });
-    document.addEventListener('touchstart', h, { once: true, capture: true });
-}
-
-function mapLangToVoiceTag(langCode) {
-    // Map our UI language codes to BCP-47 voice tags
-    const lc = String(langCode || '').toLowerCase();
-    const map = {
-        'en': 'en-US',
-        'hi': 'hi-IN',
-        'mr': 'mr-IN',
-        'ta': 'ta-IN',
-        'te': 'te-IN',
-        'bn': 'bn-IN',
-        'gu': 'gu-IN',
-        'kn': 'kn-IN',
-        'ml': 'ml-IN',
-        'pa': 'pa-IN',
-        'or': 'or-IN',
-        'ur': 'ur-IN'
-    };
-    return map[lc] || 'en-US';
-}
-
-function pickVoiceFor(langTag) {
-    try {
-        const synth = window.speechSynthesis;
-        if (!synth) return null;
-        const voices = synth.getVoices ? synth.getVoices() : [];
-        if (!voices || !voices.length) return null;
-        const lcTag = langTag.toLowerCase();
-        const base = lcTag.split('-')[0];
-        // Candidates: exact or same language base
-        const candidates = voices.filter(v => {
-            const l = (v.lang || '').toLowerCase();
-            return l === lcTag || l.startsWith(base);
-        });
-        if (!candidates.length) return null;
-        // Prefer higher quality voices (heuristic)
-        const scored = candidates
-            .map(v => {
-                const name = (v.name || '').toLowerCase();
-                let score = 0;
-                if (v.lang && v.lang.toLowerCase() === lcTag) score += 3;
-                if (/neural|natural|cloud|online/.test(name)) score += 3;
-                if (/google|microsoft|apple/.test(name)) score += 2;
-                if (/female|woman|girl/.test(name)) score += 1; // often more natural for assistants
-                return { v, score };
-            })
-            .sort((a, b) => b.score - a.score);
-        return (scored[0] && scored[0].v) || candidates[0] || null;
-    } catch (e) { return null; }
-}
-
-function stripTags(s) {
-    return String(s || '')
-        .replace(/<br\s*\/?>(?=\s|$)/gi, '\n')
-        .replace(/<[^>]*>/g, '')
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
-        .replace(/&amp;/g, '&');
-}
-
-function chunksForTTS(text, maxLen = 180) {
-    const t = stripTags(text).replace(/\s+/g, ' ').trim();
-    if (t.length <= maxLen) return [t];
-    const parts = [];
-    let start = 0;
-    while (start < t.length) {
-        let end = Math.min(start + maxLen, t.length);
-        // try to cut at sentence boundary
-        const slice = t.slice(start, end);
-        let cut = Math.max(slice.lastIndexOf('।'), slice.lastIndexOf('.'));
-        if (cut < 40) { // too early, try question/exclamation
-            cut = Math.max(cut, slice.lastIndexOf('?'));
-            cut = Math.max(cut, slice.lastIndexOf('!'));
+// Toggle mute state
+function toggleMute() {
+    isMuted = !isMuted;
+    const muteButton = document.getElementById('muteButton');
+    const icon = muteButton.querySelector('i');
+    
+    if (isMuted) {
+        muteButton.classList.add('muted');
+        icon.classList.remove('fa-volume-up');
+        icon.classList.add('fa-volume-mute');
+        // Stop any ongoing speech when muting
+        if (synth) {
+            synth.cancel();
         }
-        if (cut < 40) { // still too early, cut at last space
-            cut = slice.lastIndexOf(' ');
-        }
-        if (cut <= 0) cut = slice.length;
-        parts.push(slice.slice(0, cut).trim());
-        start += cut;
+    } else {
+        muteButton.classList.remove('muted');
+        icon.classList.remove('fa-volume-mute');
+        icon.classList.add('fa-volume-up');
     }
-    return parts.filter(Boolean);
+    
+    // Save the mute state to localStorage
+    localStorage.setItem('isMuted', isMuted);
 }
 
+// Function to speak text
 function speak(text) {
-    try {
-        const synth = window.speechSynthesis;
-        if (!synth || !text || !ttsEnabled) return;
-        // Cancel to avoid overlap and keep it snappy
-        try { if (synth.speaking || synth.pending) synth.cancel(); } catch (e) {}
-        // Some browsers require resume after user gesture
-        try { synth.resume(); } catch (e) {}
-        // If voices aren't loaded yet, retry shortly (once or twice)
-        const existingVoices = synth.getVoices ? synth.getVoices() : [];
-        if ((!existingVoices || !existingVoices.length) && ttsRetryCount < 2) {
-            ttsRetryCount++;
-            setTimeout(() => speak(text), 250);
-            return;
-        }
-        ttsRetryCount = 0;
-        const tag = mapLangToVoiceTag(typeof currentLanguage !== 'undefined' ? currentLanguage : 'en');
-        const voice = pickVoiceFor(tag);
+    if (!ttsEnabled || !synth || isMuted) return;
 
-        // Language-specific prosody tweaks for naturalness
-        const baseRate = (tag.startsWith('hi') ? 0.95 : 0.98); // be a touch slower overall
-        const rate = Math.min(1.05, Math.max(0.9, baseRate));
-        const pitch = 1.0; // neutral pitch to feel natural
+    // Cancel any ongoing speech
+    synth.cancel();
 
-        const pieces = chunksForTTS(text);
-        pieces.forEach((piece, i) => {
-            const utter = new SpeechSynthesisUtterance(piece);
-            utter.lang = tag;
-            utter.rate = rate;
-            utter.pitch = pitch;
-            if (voice) utter.voice = voice;
-            // small pause between chunks for breath
-            if (i > 0) utter.pause = 80; // not widely supported but harmless
-            synth.speak(utter);
-        });
-    } catch (e) { /* no-op */ }
+    // Create a new speech utterance
+    const utterance = new SpeechSynthesisUtterance(text);
+    
+    // Set voice based on current language
+    const voiceLang = currentLanguage === 'en' ? 'en-US' : 'hi-IN';
+    const voice = voices.find(v => v.lang.startsWith(voiceLang)) || 
+                 voices.find(v => v.lang.startsWith('en'));
+    
+    if (voice) {
+        utterance.voice = voice;
+    }
+    
+    // Set other properties
+    utterance.rate = 0.9;
+    utterance.pitch = 1;
+    utterance.volume = 1;
+    
+    // Speak the text
+    synth.speak(utterance);
 }
-
-// --- Voice input (Speech-to-Text) ---
-let __recog = null;
-let __recognizing = false;
 
 function getRecognizer() {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -1011,30 +1245,38 @@ function formatForDisplay(text, lang) {
 }
 
 function addMessage(text, sender) {
-    const chatWindow = document.getElementById('chat-window');
+    const chatContainer = document.getElementById('chat-window');
+    if (!chatContainer) return;
+
     const messageDiv = document.createElement('div');
-    messageDiv.className = `chat-bubble ${sender}`;
+    messageDiv.className = `message ${sender}`;
     
-    if (sender === 'bot') {
-        // Ensure only selected language is shown
-        text = formatForDisplay(text, currentLanguage);
-        messageDiv.innerHTML = `
-            <div class="bot-avatar">👩‍⚕️</div>
-            <div class="message-content">
-                <div class="message-text">${text.replace(/\n/g, '&lt;br&gt;')}</div>
-            </div>
-        `;
-    } else {
-        messageDiv.innerHTML = `
-            <div class="bot-avatar user-avatar">👤</div>
-            <div class="message-content">
-                <div class="message-text">${text.replace(/\n/g, '&lt;br&gt;')}</div>
-            </div>
-        `;
-    }
+    // Create message content with proper line breaks
+    const messageContent = document.createElement('div');
+    messageContent.className = 'message-content';
     
-    chatWindow.appendChild(messageDiv);
-    chatWindow.scrollTop = chatWindow.scrollHeight;
+    // Create avatar based on sender
+    const avatar = document.createElement('div');
+    avatar.className = sender === 'user' ? 'user-avatar' : 'bot-avatar';
+    avatar.textContent = sender === 'user' ? '👤' : '🤖';
+    
+    // Create text container
+    const textContainer = document.createElement('div');
+    textContainer.className = 'message-text';
+    
+    // Convert newlines to <br> tags and set as HTML
+    textContainer.innerHTML = text.replace(/\n/g, '<br>');
+    
+    // Assemble the message
+    messageContent.appendChild(avatar);
+    messageContent.appendChild(textContainer);
+    messageDiv.appendChild(messageContent);
+    
+    // Add to chat container
+    chatContainer.appendChild(messageDiv);
+    
+    // Scroll to bottom
+    chatContainer.scrollTop = chatContainer.scrollHeight;
 
     // Speak bot messages immediately for quick experience
     if (sender === 'bot') {
@@ -1114,24 +1356,64 @@ function adviceFor(symptom, days, severity) {
 function handleConversationFlow(userMessage) {
     // 0) If risk screening in progress
     if (riskState.needed && riskState.askedIndex >= 0) {
-        return recordRiskAnswer(userMessage);
+        try {
+            const response = recordRiskAnswer(userMessage);
+            if (response) {
+                return response;
+            }
+        } catch (error) {
+            console.error('Error in risk screening:', error);
+            return currentLanguage === 'en' 
+                ? 'Sorry, there was an error processing your response. Please try again.'
+                : 'क्षमा करें, आपके उत्तर को संसाधित करने में त्रुटि हुई। कृपया पुनः प्रयास करें।';
+        }
     }
 
-    // 1) Set or detect current symptom
+    // 1) Detect symptom from message if not already set
     if (!conversationState.currentSymptom) {
-        const s = detectSymptom(userMessage);
-        if (s) {
-            conversationState.currentSymptom = s;
-            // Start risk screening first
+        const symptom = detectSymptom(userMessage);
+        if (symptom) {
+            conversationState.currentSymptom = symptom;
+            // Start risk screening before asking about duration
             return startRiskScreening();
         }
-        // If no symptom detected, default generic
-        return generateAIResponse(userMessage);
+        return null; // No symptom detected, let AI handle
     }
 
-    // If risk screening is required but not started (e.g., via quick button)
+    // 2) If we have a symptom but no duration
+    if (conversationState.currentSymptom && conversationState.durationDays === null) {
+        const days = parseDurationDays(userMessage);
+        if (days !== null) {
+            conversationState.durationDays = days;
+            return followUpAskSeverity();
+        }
+        return 'कृपया दिनों की संख्या बताएं (जैसे "2 दिन" या "1 दिन") / Please specify number of days (e.g. "2 days" or "1 day")';
+    }
+
+    // 3) If we have symptom and duration but no severity
+    if (conversationState.currentSymptom && conversationState.durationDays !== null && !conversationState.severity) {
+        const severity = detectSeverity(userMessage);
+        if (severity) {
+            conversationState.severity = severity;
+            const advice = adviceFor(
+                conversationState.currentSymptom,
+                conversationState.durationDays,
+                conversationState.severity
+            );
+            // Reset conversation state after giving advice
+            const result = advice || (currentLanguage === 'en' 
+                ? 'Here is my advice for your symptoms.' 
+                : 'आपके लक्षणों के लिए मेरी सलाह यह है।');
+            resetConversation();
+            return result;
+        }
+        return 'कृपया तीव्रता बताएं (हल्का/मध्यम/गंभीर) / Please specify severity (mild/moderate/severe)';
+    }
+
+    return null; // Let AI handle other cases
     if (!riskState.askedIndex && riskState.needed) {
-        return startRiskScreening();
+        const response = startRiskScreening();
+        return response || null;
     }
 
     // 2) If duration not captured, try to parse
@@ -1139,7 +1421,8 @@ function handleConversationFlow(userMessage) {
         const days = parseDurationDays(userMessage);
         if (days != null) {
             conversationState.durationDays = days;
-            return followUpAskSeverity();
+            const response = followUpAskSeverity();
+            return response || null;
         }
         return 'लक्षण कब से हैं? कितने दिन? / Since when? How many days?';
     }
@@ -1154,15 +1437,17 @@ function handleConversationFlow(userMessage) {
                 conversationState.durationDays,
                 conversationState.severity
             );
-            // Reset for next conversation thread
-            resetConversation();
-            return msg;
+            // Don't reset here, let the sendMessage function handle it
+            return msg || null;
         }
-        return followUpAskSeverity();
+        const response = followUpAskSeverity();
+        return response || null;
     }
 
-    // 4) Fallback
-    return adviceFor(conversationState.currentSymptom, conversationState.durationDays, conversationState.severity);
+    // 4) Fallback - if we have all info but still here, give advice
+    const advice = adviceFor(conversationState.currentSymptom, conversationState.durationDays, conversationState.severity);
+    resetConversation();
+    return advice || null;
 }
 
 function generateAIResponse(userMessage) {
@@ -1313,39 +1598,70 @@ function callEmergency() {
 async function findNearbyFacilities() {
     const statusEl = document.getElementById('nearbyStatus');
     const listEl = document.getElementById('nearbyResults');
+    const t = translations[currentLanguage] || translations.en;
+    
+    // Clear previous results
     if (listEl) listEl.innerHTML = '';
-    const t = translations[currentLanguage] || translations.hi;
+    
+    // Set initial status
     const locating = t.nearbyLocating || 'Locating you...';
     const denied = t.nearbyDenied || 'Location permission denied.';
     const errText = t.nearbyError || 'Could not fetch nearby facilities.';
-    if (statusEl) statusEl.textContent = locating;
+    
+    if (statusEl) {
+        statusEl.textContent = locating;
+        statusEl.style.color = ''; // Reset color
+    }
 
+    // Check if geolocation is supported
     if (!navigator.geolocation) {
-        if (statusEl) statusEl.textContent = t.nearbyNoGeo || 'Geolocation is not supported by your browser.';
+        if (statusEl) {
+            statusEl.textContent = t.nearbyNoGeo || 'Geolocation is not supported by your browser.';
+            statusEl.style.color = 'red';
+        }
         return;
     }
 
-    navigator.geolocation.getCurrentPosition(async (pos) => {
-        const { latitude: lat, longitude: lon } = pos.coords;
+    try {
+        // Get current position
+        const position = await new Promise((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(
+                resolve, 
+                reject, 
+                {
+                    enableHighAccuracy: true,
+                    timeout: 10000, // 10 seconds
+                    maximumAge: 0
+                }
+            );
+        });
+
+        const { latitude: lat, longitude: lon } = position.coords;
         // Store for directions links
         window.__userLocation = { lat, lon };
 
-        // Reverse geocode user's location for exact address (best-effort)
-        try {
-            const rev = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}`);
-            const revData = await rev.json();
-            const addr = revData && revData.display_name ? revData.display_name : '';
-            if (statusEl) {
-                const coords = `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
-                statusEl.textContent = `${t.yourLocation || 'Your location'}: ${addr ? addr + ' ' : ''}(${coords})\n${t.nearbyFetching || 'Finding facilities near you...'}`;
-            }
-        } catch (e) {
-            if (statusEl) {
-                const coords = `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
-                statusEl.textContent = `${t.yourLocation || 'Your location'}: (${coords})\n${t.nearbyFetching || 'Finding facilities near you...'}`;
-            }
+        // Show coordinates while we try to get the address
+        const coords = `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+        if (statusEl) {
+            statusEl.textContent = `${t.yourLocation || 'Your location'}: ${coords}\n${t.nearbyFetching || 'Finding facilities near you...'}`;
         }
 
+        try {
+            // Try to get address (reverse geocoding)
+            const rev = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&accept-language=${currentLanguage}`);
+            if (rev.ok) {
+                const revData = await rev.json();
+                const addr = revData?.display_name;
+                if (addr && statusEl) {
+                    statusEl.textContent = `${t.yourLocation || 'Your location'}: ${addr}`;
+                }
+            }
+        } catch (e) {
+            console.error('Reverse geocoding error (non-fatal):', e);
+            // Continue with hospital search even if reverse geocoding fails
+        }
+
+        // Search for nearby hospitals using Overpass API
         try {
             // Overpass query: hospitals, clinics, doctors, healthcare facilities within 5km
             const radius = 5000;
@@ -1353,8 +1669,8 @@ async function findNearbyFacilities() {
                 out:json
             ];
             (
-              node["amenity"~"hospital|clinic|doctors"](around:${radius},${lat},${lon});
-              way["amenity"~"hospital|clinic|doctors"](around:${radius},${lat},${lon});
+              node["amenity"~"hospital|clinic|doctors|pharmacy"](around:${radius},${lat},${lon});
+              way["amenity"~"hospital|clinic|doctors|pharmacy"](around:${radius},${lat},${lon});
               node["healthcare"](around:${radius},${lat},${lon});
               way["healthcare"](around:${radius},${lat},${lon});
             );
@@ -1365,14 +1681,17 @@ async function findNearbyFacilities() {
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 body: new URLSearchParams({ data: query })
             });
+            
+            if (!resp.ok) throw new Error('Failed to fetch facilities');
+            
             const data = await resp.json();
             const elements = Array.isArray(data.elements) ? data.elements : [];
 
             const items = elements.map(el => {
                 const center = el.center || { lat: el.lat, lon: el.lon };
                 const tags = el.tags || {};
-                const name = (tags.name || tags["name:en"]) || 'Unnamed facility';
-                const type = (tags.amenity || tags.healthcare) || 'facility';
+                const name = (tags.name || tags["name:en"] || tags["name:${currentLanguage}"]) || 'Unnamed facility';
+                const type = (tags.amenity || tags.healthcare || 'facility').replace('_', ' ');
                 const dist = center && typeof center.lat === 'number' && typeof center.lon === 'number'
                     ? haversineDistanceKm(lat, lon, center.lat, center.lon)
                     : null;
@@ -1390,13 +1709,28 @@ async function findNearbyFacilities() {
 
             if (statusEl) statusEl.textContent = '';
             renderNearbyList(items);
+            
         } catch (e) {
-            if (statusEl) statusEl.textContent = errText;
-            console.error(e);
+            console.error('Error fetching facilities:', e);
+            if (statusEl) {
+                statusEl.textContent = errText;
+                statusEl.style.color = 'red';
+            }
         }
-    }, (err) => {
-        if (statusEl) statusEl.textContent = denied;
-    }, { enableHighAccuracy: true, timeout: 10000 });
+        
+    } catch (err) {
+        console.error('Geolocation error:', err);
+        if (statusEl) {
+            if (err.code === 1) { // PERMISSION_DENIED
+                statusEl.textContent = denied;
+            } else if (err.code === 3) { // TIMEOUT
+                statusEl.textContent = t.nearbyTimeout || 'Location request timed out. Please try again.';
+            } else {
+                statusEl.textContent = errText;
+            }
+            statusEl.style.color = 'red';
+        }
+    }
 }
 
 function formatAddress(tags) {
@@ -1644,40 +1978,166 @@ function clearChat() {
     const cw = document.getElementById('chat-window');
     if (cw) cw.innerHTML = '';
     // Show localized greeting again
-    const t = translations[currentLanguage] || translations.hi || {};
-    const greet = t.greet || 'Hello! How can I help?';
-    addMessage(greet, 'bot');
 }
 
 // Initialize the page
-document.addEventListener('DOMContentLoaded', function() {
-    // Apply UI language once DOM is ready
-    // Preload TTS voices for more natural, immediate playback
-    try { initTTS(); } catch (e) {}
-    // Prepare TTS unlock on first user gesture (needed on many browsers)
-    try { setupTTSUnlock(); } catch (e) {}
-    applyTranslations(currentLanguage);
-    setTimeout(() => {
-        showMessage(translations[currentLanguage].greet, 'bot');
-    }, 800);
-    document.getElementById('userInput').addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') {
-            sendMessage();
-        }
-    });
-    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-        anchor.addEventListener('click', function (e) {
-            e.preventDefault();
-            const target = document.querySelector(this.getAttribute('href'));
-            if (target) {
-                target.scrollIntoView({ behavior: 'smooth' });
+// Initialize mute button state
+function initMuteButton() {
+    const savedMuteState = localStorage.getItem('isMuted');
+    if (savedMuteState === 'true') {
+        isMuted = true;
+        const muteButton = document.getElementById('muteButton');
+        if (muteButton) {
+            const icon = muteButton.querySelector('i');
+            muteButton.classList.add('muted');
+            icon.classList.remove('fa-volume-up');
+    // Initialize mute button state
+    initMuteButton();
+    
+    // Initialize symptom modal event listeners
+    const symptomSearch = document.getElementById('symptomSearch');
+    if (symptomSearch) {
+        symptomSearch.addEventListener('input', (e) => {
+            filterSymptoms(e.target.value);
+        });
+    }
+    
+    // Initialize language selector
+    const langSelect = document.getElementById('langSelect');
+    if (langSelect) {
+        langSelect.addEventListener('change', (e) => changeLanguage(e.target.value));
+    }
+    
+    // Initialize chat with greeting
+    const t = translations[currentLanguage] || translations.en;
+    addMessage(t.greet || 'Hello! How can I help you today?', 'bot');
+    
+    // Initialize category buttons
+    document.querySelectorAll('.category-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const category = e.target.dataset.category || 
+                           e.target.closest('.category-btn')?.dataset.category;
+            if (category) {
+                filterByCategory(category);
             }
         });
     });
-
-    // Sidebar wiring
-    const toggle = document.getElementById('sidebarToggle');
-    if (toggle) toggle.addEventListener('click', openSidebar);
+    
+    // Initialize symptom picker buttons
+    document.querySelectorAll('.symptom-picker-btn, .quick-access .quick-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            openSymptomModal();
+        });
+    });
+    
+    // Initialize submit symptoms button
+    const submitBtn = document.getElementById('submitSymptoms');
+    if (submitBtn) {
+        submitBtn.addEventListener('click', submitSymptoms);
+    }
+    
+    // Initialize send button
+    const sendBtn = document.querySelector('.send-btn');
+    if (sendBtn) {
+        sendBtn.addEventListener('click', sendMessage);
+    }
+    
+    // Close modal when clicking outside content or close button
+    const modal = document.getElementById('symptomModal');
+    if (modal) {
+        // Close when clicking outside modal content
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                closeSymptomModal();
+            }
+        });
+        
+        // Close button
+        const closeBtn = modal.querySelector('.close');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', closeSymptomModal);
+        }
+    }
+    
+    // Apply UI language once DOM is ready
+    try { 
+        applyTranslations(currentLanguage);
+        
+        // Initial render of symptoms if available
+        if (window.symptomsData && window.symptomsData.length > 0) {
+            renderSymptoms(window.symptomsData);
+        } else {
+            console.log('No symptoms data found');
+        }
+        
+        // Show greeting after a short delay
+        setTimeout(() => {
+            const t = translations[currentLanguage] || translations.en;
+            showMessage(t.greet, 'bot');
+        }, 800);
+        
+        // Initialize smooth scrolling for anchor links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function(e) {
+                e.preventDefault();
+                const targetId = this.getAttribute('href');
+                if (targetId === '#') return;
+                const targetElement = document.querySelector(targetId);
+                if (targetElement) {
+                    targetElement.scrollIntoView({ behavior: 'smooth' });
+                }
+            });
+        });
+        
+        // Initialize sidebar toggle
+        const toggle = document.getElementById('sidebarToggle');
+        if (toggle) toggle.addEventListener('click', openSidebar);
+        
+        // Initialize close sidebar button
+        const closeBtn = document.querySelector('.sidebar-close');
+        if (closeBtn) closeBtn.addEventListener('click', closeSidebar);
+        
+        // Initialize symptom modal open/close
+        const symptomModal = document.getElementById('symptomModal');
+        if (symptomModal) {
+            const closeBtn = symptomModal.querySelector('.close');
+            if (closeBtn) closeBtn.addEventListener('click', closeSymptomModal);
+            
+            // Initialize symptom search
+            const searchInput = symptomModal.querySelector('#symptomSearch');
+            if (searchInput) {
+                searchInput.addEventListener('input', (e) => {
+                    filterSymptoms(e.target.value);
+                });
+            }
+        }
+        
+        // Initialize chat input
+        const userInput = document.getElementById('userInput');
+        if (userInput) {
+            userInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    sendMessage();
+                }
+            });
+        }
+        
+        // Initialize send button
+        const sendBtn = document.querySelector('.send-btn');
+        if (sendBtn) {
+            sendBtn.addEventListener('click', sendMessage);
+        }
+        
+        // Initialize symptom picker button
+        const symptomBtn = document.querySelector('.symptom-picker-btn');
+        if (symptomBtn) {
+            symptomBtn.addEventListener('click', openSymptomModal);
+        }
+        
+    } catch (e) {
+        console.error('Initialization error:', e);
+    }
     const overlay = document.getElementById('sidebarOverlay');
     if (overlay) overlay.addEventListener('click', closeSidebar);
     // Close on ESC
@@ -1745,15 +2205,8 @@ function addHoverEffects() {
     });
 }
 
-document.addEventListener('DOMContentLoaded', addHoverEffects);
-
-// Accessibility improvements
 function improveAccessibility() {
-    document.querySelectorAll('button').forEach(button => {
-        if (!button.getAttribute('aria-label')) {
-            button.setAttribute('aria-label', button.textContent.trim());
-        }
-    });
+    // Add keyboard focus indicators
     document.querySelectorAll('button, input, a').forEach(element => {
         element.addEventListener('focus', function() {
             this.style.outline = '3px solid #2c5aa0';
@@ -1764,5 +2217,3 @@ function improveAccessibility() {
         });
     });
 }
-
-document.addEventListener('DOMContentLoaded', improveAccessibility);
